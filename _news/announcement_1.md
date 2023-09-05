@@ -5,4 +5,4 @@ inline: true
 related_posts: false
 ---
 
-We got accepted at IJCAI 2023, see you there!! :sparkles: :smile:
+We got accepted at AISafety IJCAI 2023, see you there!! :sparkles: :smile:
