@@ -2,16 +2,15 @@
 layout: about
 title: about
 permalink: /
-subtitle: <a href='#'>Affiliations</a>. Address. Contacts. Moto. Etc.
+subtitle: 
 
 profile:
   align: right
-  image: prof_pic.jpg
+  image: ph_profile.png
   image_circular: false # crops the image to make it circular
-  address: >
-    <p>555 your office number</p>
-    <p>123 your address street</p>
-    <p>Your City, State 12345</p>
+  address: > # multi-line address text smaller
+    riccardo.tedoldi@gmail.com
+    Parma, Italy 43125
 
 news: true  # includes a list of news items
 latest_posts: true  # includes a list of the newest posts
@@ -19,8 +18,11 @@ selected_papers: true # includes a list of papers marked as "selected={true}"
 social: true  # includes social icons at the bottom of the page
 ---
 
-Write your biography here. Tell the world about yourself. Link to your favorite [subreddit](http://reddit.com). You can put a picture in, too. The code is already in, just name your picture `prof_pic.jpg` and put it in the `img/` folder.
+I am a passionate math lover with a deep curiosity for Deep Learning and its applications. I am a Computer Scientist and an AI student, with a genuine enthusiasm for exploring cutting-edge technologies. I make use of my mathematical background to develop ML algorithms.
 
-Put your address / P.O. box / other info right below your picture. You can also disable any of these elements by editing `profile` property of the YAML header of your `_pages/about.md`. Edit `_bibliography/papers.bib` and Jekyll will render your [publications page](/al-folio/publications/) automatically.
+I hold a Degree in Computer Science from [University of Parma](https://www.unipr.it/en). I am presently pursuing a Master's degree in Artificial Intelligence Systems at the [University of Trento](https://www.unitn.it/en). I am fascinated by the potential of AI to revolutionize and tackle complex societal challenges. My goal is to explore innovative approaches and develop intelligent systems that can have a positive impact.
 
-Link to your social media connections, too. This theme is set up to use [Font Awesome icons](http://fortawesome.github.io/Font-Awesome/) and [Academicons](https://jpswalsh.github.io/academicons/), like the ones below. Add your Facebook, Twitter, LinkedIn, Google Scholar, or just disable all of them.
+
+As an enthusiastic researcher, I believe in the power of interdisciplinary teamwork. I enjoy engaging in meaningful discussions and exchanging ideas and perspectives. If you have any questions, feel free to reach out to me by sending a message ([@riccardotedoldi](https://www.instagram.com/riccardotedoldi/)).
+
+<!-- subtitle: <a href='#'>Affiliations</a>. Address. Contacts. Moto. Etc. -->

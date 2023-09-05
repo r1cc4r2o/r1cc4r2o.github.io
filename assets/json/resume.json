@@ -1,77 +1,194 @@
 {
   "basics": {
-    "name": "Albert Einstein",
-    "label": "Scientist",
+    "name": "Riccardo Tedoldi",
+    "label": "Student",
     "image": "",
-    "email": "albert@einstein.de",
-    "phone": "(912) 123-4567",
-    "url": "https://alshedivat.github.io/al-folio/",
-    "summary": "A German-born theoretical physicist, widely ranked among the greatest and most influential scientists of all time",
+    "email": "riccardo.tedoldi@gmail.com",
+    // "phone": "(912) 123-4567",
+    "url": "https://r1cc4r2o.github.io/",
+    "summary": "I make things with computers.",
     "location": {
-      "address": "2712 Broadway St",
-      "postalCode": "CA 94115",
-      "city": "San Francisco",
-      "countryCode": "US",
-      "region": "California"
+      // "address": "2712 Broadway St",
+      // "postalCode": "CA 94115",
+      "city": "Parma",
+      "countryCode": "IT",
+      "region": "Emilia-Romagna"
     },
     "profiles": [
       {
-        "network": "Twitter",
-        "username": "AlbertEinstein",
-        "url": "https://twitter.com/AlbertEinstein"
+        "network": "GitHub",
+        "username": "r1cc4r2o",
+        "url": "https://github.com/r1cc4r2o"
       }
     ]
   },
-  "work": [
+  "experience": [
     {
-      "name": "Institute for Advanced Study, Princeton University",
-      "position": "Professor of Theoretical Physics",
-      "url": "https://example.com",
-      "startDate": "1933-01-01",
-      "endDate": "1955-01-01",
-      "summary": "Teaching at Palmer Physical Laboratory (now 302 Frist Campus Center). While not a professor at Princeton, I associated with the physics professors and continued to give lectures on campus.",
+      "name": "University of Parma: Department of Molecular Biology and Structural Biology",
+      "position": "Research Intern",
+      "url": "https://www.unitn.it",
+      "startDate": "2021-10",
+      "endDate": "2022-6",
+      "summary": "Develoved a clustering algorithm, applied to the analysis of protein structures. Implemented Deep Learning architectures to perform Neo-functionalization detetion with different sources of information.",
       "highlights": [
-        "Relativity"
+        "Research Intern in BioML"
       ]
     }
   ],
-  "volunteer": [],
   "education": [
     {
-      "institution": "University of Zurich, Zurich, Switzerland",
-      "url": "https://www.uzh.ch/",
-      "area": "Software Development",
-      "studyType": "PhD",
-      "startDate": "1905-01-01",
-      "endDate": "1905-01-01",
+      "institution": "University of Trento",
+      "url": "https://www.unitn.it",
+      "area": "Artificial Intelligence Systems",
+      "studyType": "M.Sc.",
+      "startDate": "2022-09-15",
+      "endDate": "present",
+      "score": "Current GPA: 3.92/4",
+      "courses": [
+        "M.Sc. Artificial Intelligence Systems",
+        "Current GPA: 3.92/4",
+        "Courses: Machine Learning, Deep Learning, Advanced Topics in Machine Learning and Optimization, Computer Vision, Signal and video processing, Trends and Applications of Computer Vision, Advanced Computer Vision, Natural Language Understanding, Human-Machine Dialogue, Grounded Language Processing, Applied Natural Language Processing, Artificial and biological neural system, Bio-Inspired Artificial Intelligence, Law and Ethics in Artificial Intelligence, Proteomics and Protein characterization, and Fundamentals of Artificial Intelligence"
+      ]
+    },
+    {
+      "institution": "University of Parma",
+      "url": "https://www.unipr.it",
+      "area": "Computer Science",
+      "studyType": "B.Sc.",
+      "startDate": "2019-09-28",
+      "endDate": "2022-07-04",
+      "score": "GPA: 3.85/4",
+      "courses": [
+        "B.Sc. Computer Science",
+        "GPA: 3.85/4 - First degree of the class",
+        "Courses: Linear Algebra and geometry, Analysis I, Algorithms and data structures, Lab. algorithms and data structures, Physics I, Fundamentals of programming, Computer System Architecture, Database Systems, Probability and Statistics, Coding and design methodology, Information Systems and Technology, Cloud & IT systems, Calculus, Foundations of computer science, Operating System, Software engineering, Computer Networks, Information systems and enterprise management, Artificial Intelligence, HPC and parallel computing, Chemistry, and Bio-informatics."
+      ]
+    },
+    {
+      "institution": "Boarding school Maria Luigia",
+      "url": "https://www.marialuigia.edu.it",
+      "area": "Scientific High School",
+      "studyType": "High School",
+      "startDate": "2017-09-15",
+      "endDate": "2019-06-28",
       "score": "",
       "courses": [
-        "Theory of Relativity"
+        "Scientific Certificate",
+        "Subjects: : Math, Physics, Chemistry, Biology, Philosophy, History, Latin, English literature, Italian literature, and Art."
       ]
     }
   ],
   "awards": [
     {
-      "title": "Nobel Prize in Physics",
-      "date": "1921-11-01",
-      "awarder": "Royal Swedish Academy of Sciences",
-      "summary": "The Nobel Prizes are five separate prizes that, according to Alfred Nobel's will of 1895, are awarded to 'those who, during the preceding year, have conferred the greatest benefit to humankind.'"
+      "title": "Grant on tuition fees",
+      "date": "2020, 2021, 2022",
+      "awarder": "Awarded 3 consecutive years in the top 11 students of the Department of Computer Science",
+      "summary": "The grant consists of a 300€ discount on the tuition fees"
     }
   ],
   "certificates": [],
-  "publications": [],
-  "skills": [],
+  "publications": [
+    {
+      "name": "An open source perspective on AI and alignment with the EU AI Act",
+      "publisher": "IJCAI 2023, Authors: D. Calanzone, A. Coppari, R. Tedoldi, G. Olivato, C. Casonato", 
+      "releaseDate": "2023-06-01",
+      "url": "https://www.aisafetyw.org/programme"
+    }
+  ],
+  "skills": [
+    {
+      "name": "programming languages",
+      "keywords": [
+        "Python, C/C++, Javascript, SQL, Bash, LaTeX, Unix Terminal, Prolog"
+      ]
+    },
+    {
+      "name": "tools",
+      "keywords": [
+        "PyTorch, PyTorch-Lightning, PyTorch3D, TensorFlow, Keras, Scikit-learn, Pandas, NumPy, Matplotlib, Seaborn, OpenCV, Git, Docker, Linux, Windows, MacOS, Jupyter Notebook, Google Colab, Microsoft Office, Adobe Illustrator, Adobe Lightroom, Blender"
+      ]
+    },
+    {
+      "name": "know the basic",
+      "keywords": [
+        "CUDA, Java, R"
+      ]
+    }
+    // {
+    //   "name": "programming languages",
+    //   "publisher": "Python, C/C++, Javascript, SQL, Bash, LaTeX, Unix Terminal, Prolog",
+    //   "releaseDate": "present",
+    //   "url": ""
+    // },
+    // {
+    //   "name": "tools",
+    //   "publisher": "PyTorch, PyTorch-Lightning, PyTorch3D, TensorFlow, Keras, Scikit-learn, Pandas, NumPy, Matplotlib, Seaborn, OpenCV, Git, Docker, Linux, Windows, MacOS, Jupyter Notebook, Google Colab, Microsoft Office, Adobe Illustrator, Adobe Lightroom, Blender",
+    //   "releaseDate": "present",
+    //   "url": ""
+    // },
+    // {
+    //   "name": "know the basic",
+    //   "publisher": "CUDA, Java, R",
+    //   "releaseDate": "present",
+    //   "url": ""
+    // }
+  ],
+  // "programming languages: Python, C/C++, Javascript, SQL, Bash, LaTeX, Unix Terminal, Prolog",
+  // "tools: PyTorch, PyTorch-Lightning, PyTorch3D, TensorFlow, Keras, Scikit-learn, Pandas, NumPy, Matplotlib, Seaborn, OpenCV, Git, Docker, Linux, Windows, MacOS, Jupyter Notebook, Google Colab, Microsoft Office, Adobe Illustrator, Adobe Lightroom, Blender",
+  // "basic: CUDA, Java, R"
   "languages": [
     {
-      "language": "German",
-      "fluency": "Native speaker"
+      "language": "Italian",
+      "fluency": "Mothertongue"
     },
     {
       "language": "English",
       "fluency": "Fluent"
+    },
+    {
+      "language": "German",
+      "fluency": "Working progress"
     }
   ],
-  "interests": [],
+  "volunteer": [
+    {
+      "organization": "Sant'Egidio Community",
+      "position": "Volunteer",
+      "url": "https://www.santegidio.org/pageID/1/langID/en/HOME.html",
+      "startDate": "2023",
+      "endDate": "present",
+      "summary": "Volunteer for the homeless",
+      "highlights": [
+        "The activity consists in distributing food and drinks to the homeless in the city of Trento"
+      ]
+    },
+    {
+      "organization": "Church of Santa Maria del Rosario in Parma",
+      "position": "Volunteer",
+      "url": "https://www.diocesi.parma.it/diocesi_2015/index.php?option=com_contact&view=contact&id=576:santa-maria-del-rosario-in-parma&catid=105&Itemid=1223",
+      "startDate": "2017",
+      "endDate": "2019",
+      "summary": "Summer entertainer for children and teenagers",
+      "highlights": [
+        "The activity consists in organizing games and activities for children and teenagers during the summer",
+        "I played a role in organizing the acting activity, in addition to actively participating as an actor."
+      ]
+    }
+  ],
+  "interests": [
+    {
+      "name": "Activities",
+      "keywords": [
+        "listening, reading, photography, music, travelling, cooking, sports"
+      ]
+    },
+    {
+      "name": "Sports",
+      "keywords": [
+        "basketball, swimming, hiking, running, gym, volleyball, karate"
+      ]
+    }
+  ],
   "references": [],
   "projects": []
 }
