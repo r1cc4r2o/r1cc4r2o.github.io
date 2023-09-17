@@ -6,7 +6,7 @@ subtitle:
 
 profile:
   align: right
-  image: ph_profile.png
+  image: ph_rick_cv_1.png
   image_circular: false # crops the image to make it circular
   address: > # multi-line address text smaller
     riccardo.tedoldi@gmail.com
