@@ -27,6 +27,7 @@ end
 
 # Gems for development or external data fetching (outside :jekyll_plugins)
 group :other_plugins do
+    gem 'update --system'
     gem 'css_parser'
     gem 'feedjira'
     gem 'httparty'
