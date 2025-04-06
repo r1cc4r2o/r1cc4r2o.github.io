@@ -1,0 +1,4 @@
+User-agent: *
+Disallow:
+
+Sitemap: https://r1cc4r2o.github.io/sitemap.xml

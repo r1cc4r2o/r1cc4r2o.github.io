@@ -1,0 +1,1096 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en"><generator uri="https://jekyllrb.com/" version="4.4.1">Jekyll</generator><link href="https://r1cc4r2o.github.io/feed.xml" rel="self" type="application/atom+xml"/><link href="https://r1cc4r2o.github.io/" rel="alternate" type="text/html" hreflang="en"/><updated>2025-04-06T19:04:31+00:00</updated><id>https://r1cc4r2o.github.io/feed.xml</id><title type="html">blank</title><entry><title type="html">Aspect Based Sentiment Analysis</title><link href="https://r1cc4r2o.github.io/blog/2023/code-aspectbasedsentimentanalysis/" rel="alternate" type="text/html" title="Aspect Based Sentiment Analysis"/><published>2023-07-06T15:09:00+00:00</published><updated>2023-07-06T15:09:00+00:00</updated><id>https://r1cc4r2o.github.io/blog/2023/code-aspectbasedsentimentanalysis</id><content type="html" xml:base="https://r1cc4r2o.github.io/blog/2023/code-aspectbasedsentimentanalysis/"><![CDATA[<p>The objective of this activity is to develop a system to extract the aspect terms and jointly detect the polarity. This is useful for the companies to understand the customer feedback and improve their products and services. For example, consider the following sentence:</p> <blockquote> <p>The rope is strong but the handle is weak.</p> <p><strong>Aspect terms:</strong> rope, handle <strong>Polarity:</strong> positive, negative <strong>Polarity of sentence:</strong> neutral</p> </blockquote> <p>The massive amount of data available on the internet makes it difficult to manually classify the feedback. The objective of this activity is to develop a system to extract the aspect terms and jointly detect the polarity of these terms. This would speed up the decision making process for the companies. Also, these systems can be used in a more complex pipeline to detect trends in the feedback and help the companies improve their products and services.</p> <p>The dataset used to train the model has been the <a href="https://github.com/lixin4ever/E2E-TBSA/tree/master/data">SemEval2014</a>. To extract the sentences in the proper format you can use the utils in their repository. Also, we could decide to use their splitting of the data or discard it and use our own. In this case, we collect the data and split it by ourselves.</p> <p>We can dowload the repository as follows:</p> <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git clone https://github.com/lixin4ever/E2E-TBSA.git
+</code></pre></div></div> <h4 id="load-and-preprocess-the-data">Load and preprocess the data</h4> <p>We import the libraries we will use:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">from</span> <span class="n">transformers</span> <span class="kn">import</span> <span class="n">RwkvModel</span>
+
+<span class="kn">import</span> <span class="n">torch</span>
+<span class="kn">import</span> <span class="n">torch.nn</span> <span class="k">as</span> <span class="n">nn</span>
+<span class="kn">import</span> <span class="n">torch.nn.functional</span> <span class="k">as</span> <span class="n">F</span>
+<span class="kn">import</span> <span class="n">torch.optim</span> <span class="k">as</span> <span class="n">optim</span>
+<span class="kn">import</span> <span class="n">torchmetrics</span>
+<span class="kn">import</span> <span class="n">pytorch_lightning</span> <span class="k">as</span> <span class="n">pl</span>
+
+<span class="kn">from</span> <span class="n">sklearn.model_selection</span> <span class="kn">import</span> <span class="n">StratifiedKFold</span><span class="p">,</span> <span class="n">KFold</span>
+<span class="kn">from</span> <span class="n">transformers</span> <span class="kn">import</span> <span class="n">AutoTokenizer</span>
+<span class="kn">from</span> <span class="n">pytorch_lightning.callbacks</span> <span class="kn">import</span> <span class="n">ModelCheckpoint</span><span class="p">,</span> <span class="n">EarlyStopping</span>
+<span class="kn">import</span> <span class="n">pickle</span>
+<span class="kn">import</span> <span class="n">glob</span>
+
+<span class="kn">import</span> <span class="n">E2E</span><span class="o">-</span><span class="n">TBSA</span><span class="p">.</span><span class="n">module</span><span class="p">.</span><span class="n">utils</span> <span class="k">as</span> <span class="n">utils</span> <span class="c1"># This is the utils from the repository
+</span>
+<span class="c1"># Set the device to cuda if available
+</span><span class="n">device</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">device</span><span class="p">(</span><span class="sh">"</span><span class="s">cuda</span><span class="sh">"</span> <span class="k">if</span> <span class="n">torch</span><span class="p">.</span><span class="n">cuda</span><span class="p">.</span><span class="nf">is_available</span><span class="p">()</span> <span class="k">else</span> <span class="sh">"</span><span class="s">cpu</span><span class="sh">"</span><span class="p">)</span>
+</code></pre></div></div> <p>Additionally, we define some functions to preprocess the data (such as padding the sentences, etc.)</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1"># merge two lists
+</span><span class="k">def</span> <span class="nf">merge_lists</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">a</span><span class="o">+</span><span class="n">b</span>
+
+<span class="k">def</span> <span class="nf">pad</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">max_len</span> <span class="o">=</span> <span class="mi">464</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="nf">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">)):</span>
+        <span class="n">dataset</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="sh">'</span><span class="s">words</span><span class="sh">'</span><span class="p">]</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="sh">'</span><span class="s">words</span><span class="sh">'</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="sh">'</span><span class="s">PAD</span><span class="sh">'</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">max_len</span> <span class="o">-</span> <span class="nf">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="sh">'</span><span class="s">words</span><span class="sh">'</span><span class="p">]))</span>
+        <span class="n">dataset</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="sh">'</span><span class="s">ts_raw_tags</span><span class="sh">'</span><span class="p">]</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="sh">'</span><span class="s">ts_raw_tags</span><span class="sh">'</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="sh">'</span><span class="s">PAD</span><span class="sh">'</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">max_len</span> <span class="o">-</span> <span class="nf">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="sh">'</span><span class="s">ts_raw_tags</span><span class="sh">'</span><span class="p">]))</span>
+        <span class="n">dataset</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="sh">'</span><span class="s">ote_raw_tags</span><span class="sh">'</span><span class="p">]</span> <span class="o">=</span> <span class="n">dataset</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="sh">'</span><span class="s">ote_raw_tags</span><span class="sh">'</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="sh">'</span><span class="s">PAD</span><span class="sh">'</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">max_len</span> <span class="o">-</span> <span class="nf">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="sh">'</span><span class="s">ote_raw_tags</span><span class="sh">'</span><span class="p">]))</span>
+    <span class="k">return</span> <span class="n">dataset</span>
+
+<span class="k">def</span> <span class="nf">retrieve_the_sentences_word_padded</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">[</span><span class="sh">'</span><span class="s"> </span><span class="sh">'</span><span class="p">.</span><span class="nf">join</span><span class="p">(</span><span class="n">d_words</span><span class="p">[</span><span class="sh">'</span><span class="s">words</span><span class="sh">'</span><span class="p">])</span> <span class="k">for</span> <span class="n">d_words</span> <span class="ow">in</span> <span class="n">d</span><span class="p">]</span>
+
+
+<span class="k">def</span> <span class="nf">retrieve_the_sentences</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">d_s</span><span class="p">[</span><span class="sh">'</span><span class="s">sentence</span><span class="sh">'</span><span class="p">]</span> <span class="k">for</span> <span class="n">d_s</span> <span class="ow">in</span> <span class="n">d</span><span class="p">]</span>
+</code></pre></div></div> <p>Then, to preprocess the data you can do the following:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">load_save_the_data</span><span class="p">():</span>
+    <span class="n">data_path</span> <span class="o">=</span> <span class="n">glob</span><span class="p">.</span><span class="nf">glob</span><span class="p">(</span><span class="sh">'</span><span class="s">./E2E-TBSA/module/data/*.txt</span><span class="sh">'</span><span class="p">)</span>
+
+    <span class="n">dataset</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">data_path</span><span class="p">:</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">utils</span><span class="p">.</span><span class="nf">read_data</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="n">dataset</span> <span class="o">=</span> <span class="nf">merge_lists</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">temp</span><span class="p">)</span>
+
+    <span class="nf">print</span><span class="p">(</span><span class="sh">'</span><span class="s">Number of sample: </span><span class="sh">'</span><span class="p">,</span> <span class="nf">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">))</span>
+    <span class="nf">print</span><span class="p">(</span><span class="sh">'</span><span class="s">Length max sentence: </span><span class="sh">'</span><span class="p">,</span> <span class="nf">max</span><span class="p">([</span><span class="nf">len</span><span class="p">(</span><span class="n">d</span><span class="p">[</span><span class="sh">'</span><span class="s">sentence</span><span class="sh">'</span><span class="p">])</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">dataset</span><span class="p">]))</span>
+    <span class="nf">print</span><span class="p">(</span><span class="sh">'</span><span class="s">Length min sentence: </span><span class="sh">'</span><span class="p">,</span> <span class="nf">min</span><span class="p">([</span><span class="nf">len</span><span class="p">(</span><span class="n">d</span><span class="p">[</span><span class="sh">'</span><span class="s">sentence</span><span class="sh">'</span><span class="p">])</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">dataset</span><span class="p">]))</span>
+
+    <span class="nf">print</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="mi">0</span><span class="p">].</span><span class="nf">keys</span><span class="p">())</span>
+    <span class="nf">print</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="sh">'</span><span class="s">ts_raw_tags</span><span class="sh">'</span><span class="p">],</span> <span class="n">dataset</span><span class="p">[</span><span class="mi">44</span><span class="p">][</span><span class="sh">'</span><span class="s">ote_raw_tags</span><span class="sh">'</span><span class="p">])</span>
+
+    <span class="n">dict_map_aspect</span> <span class="o">=</span> <span class="p">{</span><span class="sh">'</span><span class="s">O</span><span class="sh">'</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="sh">'</span><span class="s">T-NEG</span><span class="sh">'</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="sh">'</span><span class="s">T-POS</span><span class="sh">'</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="sh">'</span><span class="s">T-NEU</span><span class="sh">'</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span> <span class="sh">'</span><span class="s">PAD</span><span class="sh">'</span><span class="p">:</span> <span class="mi">4</span><span class="p">}</span>
+    <span class="n">dict_map_aspect_classify</span> <span class="o">=</span> <span class="p">{</span><span class="sh">'</span><span class="s">O</span><span class="sh">'</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="sh">'</span><span class="s">T</span><span class="sh">'</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="sh">'</span><span class="s">PAD</span><span class="sh">'</span><span class="p">:</span> <span class="mi">2</span><span class="p">}</span>
+
+    <span class="nf">print</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="sh">'</span><span class="s">sentence</span><span class="sh">'</span><span class="p">])</span>
+
+    <span class="n">dataset_padded</span> <span class="o">=</span> <span class="nf">pad</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
+
+    <span class="n">label_aspect_classification</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">stack</span><span class="p">([</span>
+        <span class="n">torch</span><span class="p">.</span><span class="nf">stack</span><span class="p">([</span><span class="n">torch</span><span class="p">.</span><span class="nf">tensor</span><span class="p">(</span><span class="n">dict_map_aspect_classify</span><span class="p">[</span><span class="n">tag</span><span class="p">])</span> <span class="k">for</span> <span class="n">tag</span> <span class="ow">in</span> <span class="n">dataset_padded</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="sh">'</span><span class="s">ote_raw_tags</span><span class="sh">'</span><span class="p">]])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="nf">len</span><span class="p">(</span><span class="n">dataset_padded</span><span class="p">))</span>
+    <span class="p">])</span>
+
+    <span class="n">label_aspect</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">stack</span><span class="p">([</span>
+        <span class="n">torch</span><span class="p">.</span><span class="nf">stack</span><span class="p">([</span><span class="n">torch</span><span class="p">.</span><span class="nf">tensor</span><span class="p">(</span><span class="n">dict_map_aspect</span><span class="p">[</span><span class="n">tag</span><span class="p">])</span> <span class="k">for</span> <span class="n">tag</span> <span class="ow">in</span> <span class="n">dataset_padded</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="sh">'</span><span class="s">ts_raw_tags</span><span class="sh">'</span><span class="p">]])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="nf">len</span><span class="p">(</span><span class="n">dataset_padded</span><span class="p">))</span>
+    <span class="p">])</span>
+
+    <span class="nf">print</span><span class="p">(</span><span class="sh">'</span><span class="s">ASPECT classification: </span><span class="sh">'</span><span class="p">,</span><span class="n">label_aspect_classification</span><span class="p">.</span><span class="n">shape</span><span class="p">,</span> <span class="sh">'</span><span class="s">ASPECT sentiment: </span><span class="sh">'</span><span class="p">,</span><span class="n">label_aspect</span><span class="p">.</span><span class="n">shape</span><span class="p">)</span>
+
+    <span class="n">torch</span><span class="p">.</span><span class="nf">save</span><span class="p">(</span><span class="n">label_aspect_classification</span><span class="p">,</span> <span class="sh">'</span><span class="s">./dataset/label_aspect_classification.pt</span><span class="sh">'</span><span class="p">)</span>
+    <span class="n">torch</span><span class="p">.</span><span class="nf">save</span><span class="p">(</span><span class="n">label_aspect</span><span class="p">,</span> <span class="sh">'</span><span class="s">./dataset/label_aspect.pt</span><span class="sh">'</span><span class="p">)</span>  
+    <span class="k">with</span> <span class="nf">open</span><span class="p">(</span><span class="sh">'</span><span class="s">./dataset/dataset_padded.pkl</span><span class="sh">'</span><span class="p">,</span> <span class="sh">'</span><span class="s">wb</span><span class="sh">'</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">pickle</span><span class="p">.</span><span class="nf">dump</span><span class="p">(</span><span class="n">dataset_padded</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">pickle</span><span class="p">.</span><span class="n">HIGHEST_PROTOCOL</span><span class="p">)</span>
+
+    <span class="n">sentences</span> <span class="o">=</span> <span class="nf">retrieve_the_sentences_word_padded</span><span class="p">(</span><span class="n">dataset_padded</span><span class="p">)</span>
+    <span class="n">tokenizer</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="p">.</span><span class="nf">from_pretrained</span><span class="p">(</span><span class="sh">"</span><span class="s">RWKV/rwkv-4-169m-pile</span><span class="sh">"</span><span class="p">)</span>
+    <span class="n">tokenizer</span><span class="p">.</span><span class="n">pad_token</span> <span class="o">=</span> <span class="sh">'</span><span class="s">PAD</span><span class="sh">'</span>
+    <span class="n">inputs</span> <span class="o">=</span> <span class="nf">tokenizer</span><span class="p">(</span><span class="n">sentences</span><span class="p">,</span> <span class="n">return_tensors</span><span class="o">=</span><span class="sh">"</span><span class="s">pt</span><span class="sh">"</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+    <span class="nf">print</span><span class="p">(</span><span class="sh">'</span><span class="s">Input: </span><span class="sh">'</span><span class="p">,</span> <span class="n">inputs</span><span class="p">[</span><span class="sh">'</span><span class="s">input_ids</span><span class="sh">'</span><span class="p">].</span><span class="n">shape</span><span class="p">)</span>
+
+    <span class="n">torch</span><span class="p">.</span><span class="nf">save</span><span class="p">(</span><span class="n">inputs</span><span class="p">[</span><span class="sh">"</span><span class="s">input_ids</span><span class="sh">"</span><span class="p">],</span> <span class="sh">"</span><span class="s">./dataset/input_ids.pt</span><span class="sh">"</span><span class="p">)</span>
+    <span class="n">torch</span><span class="p">.</span><span class="nf">save</span><span class="p">(</span><span class="n">inputs</span><span class="p">[</span><span class="sh">"</span><span class="s">attention_mask</span><span class="sh">"</span><span class="p">],</span> <span class="sh">"</span><span class="s">./dataset/attention_mask.pt</span><span class="sh">"</span><span class="p">)</span>
+
+<span class="nf">load_save_the_data</span><span class="p">()</span> <span class="c1"># load and save the data
+</span></code></pre></div></div> <h4 id="architecture">Architecture</h4> <p>Here we define the backbone of our architecture. We use the pretrained model from RWKV.</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">RWKV_Backbone</span><span class="p">(</span><span class="n">nn</span><span class="p">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="n">self</span><span class="p">):</span>
+        <span class="nf">super</span><span class="p">().</span><span class="nf">__init__</span><span class="p">()</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">pretrained</span> <span class="o">=</span> <span class="n">RwkvModel</span><span class="p">.</span><span class="nf">from_pretrained</span><span class="p">(</span><span class="sh">"</span><span class="s">RWKV/rwkv-4-169m-pile</span><span class="sh">"</span><span class="p">)</span>
+
+        <span class="c1"># # Freeze the pretrained model
+</span>        <span class="c1"># for param in self.pretrained.parameters():
+</span>        <span class="c1">#     param.requires_grad = False
+</span>
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">input_ids</span><span class="p">):</span>
+        <span class="n">outputs</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">pretrained</span><span class="p">(</span><span class="n">input_ids</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">outputs</span><span class="p">.</span><span class="n">last_hidden_state</span>
+</code></pre></div></div> <p>The model relies on the features extracted by the backbone (RWKV model). Then, we use an MLP with non-linearity, dropout and layer normalization to classify the aspect terms. We also use a mask to discard the non-aspect terms. In this way, the subsequent module has to focus only on the aspect terms. This simplifies the overall effort of the next module to classify the polarity of the aspect terms.</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+<span class="k">def</span> <span class="nf">non_aspect_masking</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">labels</span><span class="p">):</span>
+    <span class="c1"># print(out.shape, labels.unsqueeze(-1).shape)
+</span>    <span class="k">return</span> <span class="n">torch</span><span class="p">.</span><span class="nf">mul</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="p">(</span><span class="n">labels</span><span class="p">.</span><span class="nf">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">).</span><span class="nf">reshape</span><span class="p">(</span><span class="n">out</span><span class="p">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">960</span><span class="p">,</span> <span class="mi">1</span><span class="p">).</span><span class="nf">repeat</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">768</span><span class="p">))</span>
+
+<span class="k">class</span> <span class="nc">AspectExtraction</span><span class="p">(</span><span class="n">nn</span><span class="p">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="n">self</span><span class="p">):</span>
+        <span class="nf">super</span><span class="p">().</span><span class="nf">__init__</span><span class="p">()</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">backbone</span> <span class="o">=</span> <span class="nc">RWKV_Backbone</span><span class="p">()</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">aspect_classfy</span> <span class="o">=</span> <span class="n">nn</span><span class="p">.</span><span class="nc">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Linear</span><span class="p">(</span><span class="mi">768</span><span class="p">,</span> <span class="mi">256</span><span class="p">),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">LayerNorm</span><span class="p">(</span><span class="mi">256</span><span class="p">),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Dropout</span><span class="p">(</span><span class="mf">0.1</span><span class="p">),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Linear</span><span class="p">(</span><span class="mi">256</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
+        <span class="p">)</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="n">mask_non_aspect</span> <span class="o">=</span> <span class="n">non_aspect_masking</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">input_ids</span><span class="p">):</span>
+
+        <span class="c1"># Get the output from the backbone
+</span>        <span class="n">out</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">backbone</span><span class="p">(</span><span class="n">input_ids</span><span class="p">)</span>
+
+        <span class="c1"># print(output.shape)
+</span>
+        <span class="c1"># Get the aspect classification
+</span>        <span class="n">aspect_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">aspect_classfy</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+
+        <span class="c1"># print(aspect_classfy.shape)
+</span>
+        <span class="c1"># Get the logits
+</span>        <span class="n">logits</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">argmax</span><span class="p">(</span><span class="n">aspect_classfy</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Mask the non-aspect words
+</span>        <span class="n">out</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">mask_non_aspect</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">logits</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">out</span><span class="p">,</span> <span class="n">aspect_classfy</span>
+</code></pre></div></div> <p>This module classifies the polarity of the aspect terms and moves forward the aspect classified.</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+<span class="k">class</span> <span class="nc">AspectClassification</span><span class="p">(</span><span class="n">nn</span><span class="p">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="n">self</span><span class="p">):</span>
+        <span class="nf">super</span><span class="p">().</span><span class="nf">__init__</span><span class="p">()</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="n">AspectExtraction</span> <span class="o">=</span> <span class="nc">AspectExtraction</span><span class="p">()</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="n">sentiment_classfy</span>  <span class="o">=</span> <span class="n">nn</span><span class="p">.</span><span class="nc">Sequential</span><span class="p">(</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Linear</span><span class="p">(</span><span class="mi">768</span><span class="p">,</span> <span class="mi">256</span><span class="p">),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">ReLU</span><span class="p">(),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">LayerNorm</span><span class="p">(</span><span class="mi">256</span><span class="p">),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Dropout</span><span class="p">(</span><span class="mf">0.1</span><span class="p">),</span>
+            <span class="n">nn</span><span class="p">.</span><span class="nc">Linear</span><span class="p">(</span><span class="mi">256</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">input_ids</span><span class="p">):</span>
+
+        <span class="c1"># Get the the masked output
+</span>        <span class="n">output</span><span class="p">,</span> <span class="n">aspect_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nc">AspectExtraction</span><span class="p">(</span><span class="n">input_ids</span><span class="p">)</span>
+
+        <span class="c1"># Get the sentiment classification
+</span>        <span class="n">sentiment_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">sentiment_classfy</span><span class="p">(</span><span class="n">output</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">sentiment_classfy</span><span class="p">,</span> <span class="n">aspect_classfy</span>
+</code></pre></div></div> <p>Finally, we define the training loop. We use PyTorch-Lightning to simplify the training loop. We use the AdamW optimizer with a cosine annealing scheduler with warm restarts. We use the cross entropy loss for both the aspect classification and the sentiment classification. We also use the accuracy and the F1 score as metrics. The advantage of using PyTorch-Lightning is that we can easily log the metrics and visualize them using TensorBoard. Also, we can easily save the model and load it later.</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">Net</span><span class="p">(</span><span class="n">pl</span><span class="p">.</span><span class="n">LightningModule</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="n">self</span><span class="p">):</span>
+        <span class="nf">super</span><span class="p">().</span><span class="nf">__init__</span><span class="p">()</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="n">model</span> <span class="o">=</span> <span class="nc">AspectClassification</span><span class="p">()</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="n">loss_sentiment_classfy</span> <span class="o">=</span> <span class="n">nn</span><span class="p">.</span><span class="nc">CrossEntropyLoss</span><span class="p">()</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">loss_aspect_classfy</span> <span class="o">=</span> <span class="n">nn</span><span class="p">.</span><span class="nc">CrossEntropyLoss</span><span class="p">()</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="n">acc_aspect_classfy</span> <span class="o">=</span> <span class="n">torchmetrics</span><span class="p">.</span><span class="nc">Accuracy</span><span class="p">(</span><span class="n">task</span><span class="o">=</span><span class="sh">'</span><span class="s">multiclass</span><span class="sh">'</span><span class="p">,</span> <span class="n">num_classes</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">f1_aspect_classfy</span> <span class="o">=</span> <span class="n">torchmetrics</span><span class="p">.</span><span class="nc">F1Score</span><span class="p">(</span><span class="n">task</span><span class="o">=</span><span class="sh">'</span><span class="s">multiclass</span><span class="sh">'</span><span class="p">,</span> <span class="n">num_classes</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="n">acc_sentiment_classfy</span> <span class="o">=</span> <span class="n">torchmetrics</span><span class="p">.</span><span class="nc">Accuracy</span><span class="p">(</span><span class="n">task</span><span class="o">=</span><span class="sh">'</span><span class="s">multiclass</span><span class="sh">'</span><span class="p">,</span> <span class="n">num_classes</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="n">f1_sentiment_classfy</span> <span class="o">=</span> <span class="n">torchmetrics</span><span class="p">.</span><span class="nc">F1Score</span><span class="p">(</span><span class="n">task</span><span class="o">=</span><span class="sh">'</span><span class="s">multiclass</span><span class="sh">'</span><span class="p">,</span> <span class="n">num_classes</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">input_ids</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">self</span><span class="p">.</span><span class="nf">model</span><span class="p">(</span><span class="n">input_ids</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">training_step</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">batch</span><span class="p">,</span> <span class="n">batch_idx</span><span class="p">):</span>
+        <span class="n">input_ids</span><span class="p">,</span> <span class="n">labels_aspect_classificaiton</span><span class="p">,</span> <span class="n">labels_sentiment_classificaiton</span> <span class="o">=</span> <span class="n">batch</span>
+
+        <span class="n">sentiment_classfy</span><span class="p">,</span> <span class="n">aspect_classfy</span> <span class="o">=</span> <span class="nf">self</span><span class="p">(</span><span class="n">input_ids</span><span class="p">)</span>
+
+        <span class="n">loss_aspect_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">loss_aspect_classfy</span><span class="p">(</span><span class="n">aspect_classfy</span><span class="p">,</span> <span class="n">labels_aspect_classificaiton</span><span class="p">)</span>
+        <span class="n">loss_sentiment_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">loss_sentiment_classfy</span><span class="p">(</span><span class="n">sentiment_classfy</span><span class="p">,</span> <span class="n">labels_sentiment_classificaiton</span><span class="p">)</span>
+
+        <span class="n">loss</span> <span class="o">=</span> <span class="n">loss_aspect_classfy</span> <span class="o">+</span> <span class="n">loss_sentiment_classfy</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">train_loss</span><span class="sh">'</span><span class="p">,</span> <span class="n">loss</span><span class="p">,</span>    <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">train_loss_aspect_classfy</span><span class="sh">'</span><span class="p">,</span> <span class="n">loss_aspect_classfy</span><span class="p">,</span>   <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">train_loss_sentiment_classfy</span><span class="sh">'</span><span class="p">,</span> <span class="n">loss_sentiment_classfy</span><span class="p">,</span>   <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+        <span class="n">labels_aspect_classificaiton</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">argmax</span><span class="p">(</span><span class="n">labels_aspect_classificaiton</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">labels_sentiment_classificaiton</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">argmax</span><span class="p">(</span><span class="n">labels_sentiment_classificaiton</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">sentiment_classfy</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">argmax</span><span class="p">(</span><span class="n">sentiment_classfy</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">aspect_classfy</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">argmax</span><span class="p">(</span><span class="n">aspect_classfy</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="n">acc_aspect_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">acc_aspect_classfy</span><span class="p">(</span><span class="n">aspect_classfy</span><span class="p">,</span> <span class="n">labels_aspect_classificaiton</span><span class="p">)</span>
+        <span class="n">f1_aspect_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">f1_aspect_classfy</span><span class="p">(</span><span class="n">aspect_classfy</span><span class="p">,</span> <span class="n">labels_aspect_classificaiton</span><span class="p">)</span>
+
+        <span class="n">acc_sentiment_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">acc_sentiment_classfy</span><span class="p">(</span><span class="n">sentiment_classfy</span><span class="p">,</span> <span class="n">labels_sentiment_classificaiton</span><span class="p">)</span>
+        <span class="n">f1_sentiment_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">f1_sentiment_classfy</span><span class="p">(</span><span class="n">sentiment_classfy</span><span class="p">,</span> <span class="n">labels_sentiment_classificaiton</span><span class="p">)</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">train_acc_aspect_classfy</span><span class="sh">'</span><span class="p">,</span> <span class="n">acc_aspect_classfy</span><span class="p">,</span>   <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">train_f1_aspect_classfy</span><span class="sh">'</span><span class="p">,</span> <span class="n">f1_aspect_classfy</span><span class="p">,</span>   <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">train_acc_sentiment_classfy</span><span class="sh">'</span><span class="p">,</span> <span class="n">acc_sentiment_classfy</span><span class="p">,</span>   <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">train_f1_sentiment_classfy</span><span class="sh">'</span><span class="p">,</span> <span class="n">f1_sentiment_classfy</span><span class="p">,</span>   <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+
+        <span class="k">return</span> <span class="n">loss</span>
+
+    <span class="k">def</span> <span class="nf">validation_step</span><span class="p">(</span><span class="n">self</span><span class="p">,</span> <span class="n">batch</span><span class="p">,</span> <span class="n">batch_idx</span><span class="p">):</span>
+        <span class="n">input_ids</span><span class="p">,</span> <span class="n">labels_aspect_classificaiton</span><span class="p">,</span> <span class="n">labels_sentiment_classificaiton</span> <span class="o">=</span> <span class="n">batch</span>
+
+        <span class="n">sentiment_classfy</span><span class="p">,</span> <span class="n">aspect_classfy</span> <span class="o">=</span> <span class="nf">self</span><span class="p">(</span><span class="n">input_ids</span><span class="p">)</span>
+
+        <span class="c1"># print(sentiment_classfy.shape, aspect_classfy.shape)
+</span>
+        <span class="n">loss_aspect_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">loss_aspect_classfy</span><span class="p">(</span><span class="n">aspect_classfy</span><span class="p">,</span> <span class="n">labels_aspect_classificaiton</span><span class="p">)</span>
+        <span class="n">loss_sentiment_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">loss_sentiment_classfy</span><span class="p">(</span><span class="n">sentiment_classfy</span><span class="p">,</span> <span class="n">labels_sentiment_classificaiton</span><span class="p">)</span>
+
+        <span class="n">loss</span> <span class="o">=</span> <span class="n">loss_aspect_classfy</span> <span class="o">+</span> <span class="n">loss_sentiment_classfy</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">val_loss</span><span class="sh">'</span><span class="p">,</span> <span class="n">loss</span><span class="p">,</span>    <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">val_loss_aspect_classfy</span><span class="sh">'</span><span class="p">,</span> <span class="n">loss_aspect_classfy</span><span class="p">,</span>   <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">val_loss_sentiment_classfy</span><span class="sh">'</span><span class="p">,</span> <span class="n">loss_sentiment_classfy</span><span class="p">,</span>   <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+        <span class="n">labels_aspect_classificaiton</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">argmax</span><span class="p">(</span><span class="n">labels_aspect_classificaiton</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">labels_sentiment_classificaiton</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">argmax</span><span class="p">(</span><span class="n">labels_sentiment_classificaiton</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">sentiment_classfy</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">argmax</span><span class="p">(</span><span class="n">sentiment_classfy</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">aspect_classfy</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">argmax</span><span class="p">(</span><span class="n">aspect_classfy</span><span class="p">,</span> <span class="n">dim</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="n">acc_aspect_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">acc_aspect_classfy</span><span class="p">(</span><span class="n">aspect_classfy</span><span class="p">,</span> <span class="n">labels_aspect_classificaiton</span><span class="p">)</span>
+        <span class="n">f1_aspect_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">f1_aspect_classfy</span><span class="p">(</span><span class="n">aspect_classfy</span><span class="p">,</span> <span class="n">labels_aspect_classificaiton</span><span class="p">)</span>
+
+        <span class="n">acc_sentiment_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">acc_sentiment_classfy</span><span class="p">(</span><span class="n">sentiment_classfy</span><span class="p">,</span> <span class="n">labels_sentiment_classificaiton</span><span class="p">)</span>
+        <span class="n">f1_sentiment_classfy</span> <span class="o">=</span> <span class="n">self</span><span class="p">.</span><span class="nf">f1_sentiment_classfy</span><span class="p">(</span><span class="n">sentiment_classfy</span><span class="p">,</span> <span class="n">labels_sentiment_classificaiton</span><span class="p">)</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">val_acc_aspect_classfy</span><span class="sh">'</span><span class="p">,</span> <span class="n">acc_aspect_classfy</span><span class="p">,</span>   <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">val_f1_aspect_classfy</span><span class="sh">'</span><span class="p">,</span> <span class="n">f1_aspect_classfy</span><span class="p">,</span>   <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">val_acc_sentiment_classfy</span><span class="sh">'</span><span class="p">,</span> <span class="n">acc_sentiment_classfy</span><span class="p">,</span>   <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">self</span><span class="p">.</span><span class="nf">log</span><span class="p">(</span><span class="sh">'</span><span class="s">val_f1_sentiment_classfy</span><span class="sh">'</span><span class="p">,</span> <span class="n">f1_sentiment_classfy</span><span class="p">,</span>   <span class="n">on_step</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">on_epoch</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">prog_bar</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">logger</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+
+        <span class="k">return</span> <span class="n">loss</span>
+
+    <span class="k">def</span> <span class="nf">configure_optimizers</span><span class="p">(</span><span class="n">self</span><span class="p">):</span>
+        <span class="n">optimizer</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="n">optim</span><span class="p">.</span><span class="nc">AdamW</span><span class="p">(</span><span class="n">self</span><span class="p">.</span><span class="nf">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="mf">5e-4</span><span class="p">)</span>
+        <span class="n">scheduler</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="n">optim</span><span class="p">.</span><span class="n">lr_scheduler</span><span class="p">.</span><span class="nc">CosineAnnealingWarmRestarts</span><span class="p">(</span><span class="n">optimizer</span><span class="p">,</span> <span class="n">T_0</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">optimizer</span><span class="p">],</span> <span class="p">[</span><span class="n">scheduler</span><span class="p">]</span>
+</code></pre></div></div> <h4 id="training">Training</h4> <p>Lastly, this function is used to get the train_dataloader and the val_dataloader given the k-fold split (We use as Batch Size 128).</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">BATCH_SIZE</span> <span class="o">=</span> <span class="mi">128</span>
+
+<span class="k">def</span> <span class="nf">get_dataloader</span><span class="p">(</span><span class="n">input_ids</span><span class="p">,</span> <span class="n">labels_aspect_classificaiton</span><span class="p">,</span> <span class="n">labels_sentiment_classificaiton</span><span class="p">,</span> <span class="n">train_idx</span><span class="p">,</span> <span class="n">val_idx</span><span class="p">):</span>
+
+    <span class="n">temp_train_input_ids</span> <span class="o">=</span> <span class="n">input_ids</span><span class="p">[</span><span class="n">train_idx</span><span class="p">].</span><span class="nf">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">temp_train_labels_aspect_classificaiton</span> <span class="o">=</span> <span class="n">labels_aspect_classificaiton</span><span class="p">[</span><span class="n">train_idx</span><span class="p">].</span><span class="nf">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">temp_train_labels_sentiment_classificaiton</span> <span class="o">=</span> <span class="n">labels_sentiment_classificaiton</span><span class="p">[</span><span class="n">train_idx</span><span class="p">].</span><span class="nf">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="n">temp_val_input_ids</span> <span class="o">=</span> <span class="n">input_ids</span><span class="p">[</span><span class="n">val_idx</span><span class="p">].</span><span class="nf">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">temp_val_labels_aspect_classificaiton</span> <span class="o">=</span> <span class="n">labels_aspect_classificaiton</span><span class="p">[</span><span class="n">val_idx</span><span class="p">].</span><span class="nf">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">temp_val_labels_sentiment_classificaiton</span> <span class="o">=</span> <span class="n">labels_sentiment_classificaiton</span><span class="p">[</span><span class="n">val_idx</span><span class="p">].</span><span class="nf">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="c1"># initialize the train dataset
+</span>    <span class="n">train_dataset</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="n">utils</span><span class="p">.</span><span class="n">data</span><span class="p">.</span><span class="nc">TensorDataset</span><span class="p">(</span><span class="n">temp_train_input_ids</span><span class="p">,</span> <span class="n">temp_train_labels_aspect_classificaiton</span><span class="p">,</span> <span class="n">temp_train_labels_sentiment_classificaiton</span><span class="p">)</span>
+    <span class="k">del</span> <span class="n">temp_train_input_ids</span><span class="p">,</span> <span class="n">temp_train_labels_aspect_classificaiton</span><span class="p">,</span> <span class="n">temp_train_labels_sentiment_classificaiton</span>
+    <span class="c1"># initialize the train dataloader
+</span>    <span class="n">train_dataloader</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="n">utils</span><span class="p">.</span><span class="n">data</span><span class="p">.</span><span class="nc">DataLoader</span><span class="p">(</span><span class="n">train_dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">BATCH_SIZE</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+    <span class="c1"># initialize the val dataset
+</span>    <span class="n">val_dataset</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="n">utils</span><span class="p">.</span><span class="n">data</span><span class="p">.</span><span class="nc">TensorDataset</span><span class="p">(</span><span class="n">temp_val_input_ids</span><span class="p">,</span> <span class="n">temp_val_labels_aspect_classificaiton</span><span class="p">,</span> <span class="n">temp_val_labels_sentiment_classificaiton</span><span class="p">)</span>
+    <span class="k">del</span> <span class="n">temp_val_input_ids</span><span class="p">,</span> <span class="n">temp_val_labels_aspect_classificaiton</span><span class="p">,</span> <span class="n">temp_val_labels_sentiment_classificaiton</span>
+    <span class="c1"># initialize the val dataloader
+</span>    <span class="n">val_dataloader</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="n">utils</span><span class="p">.</span><span class="n">data</span><span class="p">.</span><span class="nc">DataLoader</span><span class="p">(</span><span class="n">val_dataset</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">BATCH_SIZE</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">train_dataloader</span><span class="p">,</span> <span class="n">val_dataloader</span>
+</code></pre></div></div> <p>To train the model with k-fold cross validation you can do the following:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">N_FOLDS</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="n">N_EPOCHS</span> <span class="o">=</span> <span class="mi">30</span>
+<span class="n">EARLY_STOPPING_PATIENCE</span> <span class="o">=</span> <span class="mi">2</span>
+
+<span class="c1"># load the precomputed data
+</span><span class="n">input_ids</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="sh">"</span><span class="s">dataset/input_ids.pt</span><span class="sh">"</span><span class="p">)</span>
+<span class="n">labels_aspect_classificaiton</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="sh">"</span><span class="s">dataset/label_aspect_classification.pt</span><span class="sh">"</span><span class="p">)</span>
+<span class="n">labels_sentiment_classificaiton</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">load</span><span class="p">(</span><span class="sh">"</span><span class="s">dataset/label_aspect.pt</span><span class="sh">"</span><span class="p">)</span>
+<span class="nf">print</span><span class="p">(</span><span class="sh">'</span><span class="s">Done!</span><span class="sh">'</span><span class="p">)</span>
+<span class="nf">print</span><span class="p">()</span>
+
+
+<span class="nf">print</span><span class="p">(</span><span class="sh">'</span><span class="s">Prepare and split the data...</span><span class="sh">'</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">labels_sentiment_classificaiton</span><span class="p">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
+    <span class="n">temp</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="nf">zeros</span><span class="p">(</span><span class="n">labels_sentiment_classificaiton</span><span class="p">[</span><span class="n">idx</span><span class="p">].</span><span class="nf">size</span><span class="p">())</span>
+    <span class="n">temp</span><span class="p">[</span><span class="n">labels_sentiment_classificaiton</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="o">==</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">temp</span><span class="p">[</span><span class="n">labels_sentiment_classificaiton</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="o">==</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span>
+    <span class="n">temp</span><span class="p">[</span><span class="n">labels_sentiment_classificaiton</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="o">==</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="mi">3</span>
+    <span class="n">labels_sentiment_classificaiton</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">temp</span>
+
+<span class="c1"># pad the labels
+</span><span class="n">labels_aspect_classificaiton</span> <span class="o">=</span> <span class="n">F</span><span class="p">.</span><span class="nf">pad</span><span class="p">(</span><span class="n">labels_aspect_classificaiton</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">960</span><span class="o">-</span><span class="n">labels_aspect_classificaiton</span><span class="p">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+<span class="n">labels_sentiment_classificaiton</span> <span class="o">=</span> <span class="n">F</span><span class="p">.</span><span class="nf">pad</span><span class="p">(</span><span class="n">labels_sentiment_classificaiton</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">960</span><span class="o">-</span><span class="n">labels_sentiment_classificaiton</span><span class="p">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+
+<span class="c1"># one hot encoding
+</span><span class="n">labels_aspect_classificaiton</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="n">nn</span><span class="p">.</span><span class="n">functional</span><span class="p">.</span><span class="nf">one_hot</span><span class="p">(</span><span class="n">labels_aspect_classificaiton</span><span class="p">.</span><span class="nf">to</span><span class="p">(</span><span class="n">torch</span><span class="p">.</span><span class="n">int64</span><span class="p">),</span> <span class="n">num_classes</span><span class="o">=</span><span class="mi">3</span><span class="p">).</span><span class="nf">to</span><span class="p">(</span><span class="n">torch</span><span class="p">.</span><span class="n">float32</span><span class="p">)</span>
+<span class="n">labels_sentiment_classificaiton</span> <span class="o">=</span> <span class="n">torch</span><span class="p">.</span><span class="n">nn</span><span class="p">.</span><span class="n">functional</span><span class="p">.</span><span class="nf">one_hot</span><span class="p">(</span><span class="n">labels_sentiment_classificaiton</span><span class="p">.</span><span class="nf">to</span><span class="p">(</span><span class="n">torch</span><span class="p">.</span><span class="n">int64</span><span class="p">),</span> <span class="n">num_classes</span><span class="o">=</span><span class="mi">4</span><span class="p">).</span><span class="nf">to</span><span class="p">(</span><span class="n">torch</span><span class="p">.</span><span class="n">float32</span><span class="p">)</span>
+
+<span class="c1"># initialize the kfold
+</span><span class="n">kfold</span> <span class="o">=</span> <span class="nc">KFold</span><span class="p">(</span><span class="n">n_splits</span><span class="o">=</span><span class="n">N_FOLDS</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+<span class="c1"># use a random_state to ensure reproducibility
+</span>
+<span class="c1"># initialize the model checkpoint
+</span><span class="n">checkpoint_callback</span> <span class="o">=</span> <span class="nc">ModelCheckpoint</span><span class="p">(</span>
+    <span class="n">monitor</span><span class="o">=</span><span class="sh">'</span><span class="s">val_acc_sentiment_classfy</span><span class="sh">'</span><span class="p">,</span>
+    <span class="n">dirpath</span><span class="o">=</span><span class="sh">'</span><span class="s">bin/sentiment_classfy/</span><span class="sh">'</span><span class="p">,</span>
+    <span class="n">filename</span><span class="o">=</span><span class="sh">'</span><span class="s">aspect_extraction_sentiment_classfy_test2-{epoch:02d}-{val_loss:.2f}</span><span class="sh">'</span><span class="p">,</span>
+    <span class="n">save_top_k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="n">mode</span><span class="o">=</span><span class="sh">'</span><span class="s">max</span><span class="sh">'</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># initialize the early stopping
+</span><span class="n">early_stop_callback</span> <span class="o">=</span> <span class="nc">EarlyStopping</span><span class="p">(</span>
+    <span class="n">monitor</span><span class="o">=</span><span class="sh">'</span><span class="s">val_acc_sentiment_classfy</span><span class="sh">'</span><span class="p">,</span>
+    <span class="n">min_delta</span><span class="o">=</span><span class="mf">0.00</span><span class="p">,</span>
+    <span class="n">patience</span><span class="o">=</span><span class="n">EARLY_STOPPING_PATIENCE</span><span class="p">,</span>
+    <span class="n">verbose</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span>
+    <span class="n">mode</span><span class="o">=</span><span class="sh">'</span><span class="s">max</span><span class="sh">'</span>
+<span class="p">)</span>
+<span class="nf">print</span><span class="p">(</span><span class="sh">'</span><span class="s">Done!</span><span class="sh">'</span><span class="p">)</span>
+
+<span class="nf">print</span><span class="p">(</span><span class="sh">'</span><span class="s">Start the training...</span><span class="sh">'</span><span class="p">)</span>
+
+<span class="c1"># loop over the kfold
+</span><span class="k">for</span> <span class="n">fold</span><span class="p">,</span> <span class="p">(</span><span class="n">train_idx</span><span class="p">,</span> <span class="n">val_idx</span><span class="p">)</span> <span class="ow">in</span> <span class="nf">enumerate</span><span class="p">(</span><span class="n">kfold</span><span class="p">.</span><span class="nf">split</span><span class="p">(</span><span class="n">input_ids</span><span class="p">,</span> <span class="n">labels_aspect_classificaiton</span><span class="p">)):</span>
+
+    <span class="n">train_dataloader</span><span class="p">,</span> <span class="n">val_dataloader</span> <span class="o">=</span> <span class="nf">get_dataloader</span><span class="p">(</span><span class="n">input_ids</span><span class="p">,</span> <span class="n">labels_aspect_classificaiton</span><span class="p">,</span> <span class="n">labels_sentiment_classificaiton</span><span class="p">,</span> <span class="n">train_idx</span><span class="p">,</span> <span class="n">val_idx</span><span class="p">)</span>
+
+    <span class="c1"># initialize the model
+</span>    <span class="n">model</span> <span class="o">=</span> <span class="nc">Net</span><span class="p">().</span><span class="nf">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="c1"># initialize the trainer
+</span>    <span class="n">trainer</span> <span class="o">=</span> <span class="n">pl</span><span class="p">.</span><span class="nc">Trainer</span><span class="p">(</span>
+        <span class="n">accelerator</span><span class="o">=</span><span class="sh">'</span><span class="s">auto</span><span class="sh">'</span><span class="p">,</span>
+        <span class="n">max_epochs</span><span class="o">=</span><span class="n">N_EPOCHS</span><span class="p">,</span>
+        <span class="n">callbacks</span><span class="o">=</span><span class="p">[</span><span class="n">checkpoint_callback</span><span class="p">,</span> <span class="n">early_stop_callback</span><span class="p">],</span>
+    <span class="p">)</span>
+
+    <span class="c1"># train the model
+</span>    <span class="n">trainer</span><span class="p">.</span><span class="nf">fit</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">train_dataloader</span><span class="p">,</span> <span class="n">val_dataloader</span><span class="p">)</span>
+
+<span class="nf">print</span><span class="p">(</span><span class="sh">'</span><span class="s">Done!</span><span class="sh">'</span><span class="p">)</span>
+</code></pre></div></div> <p><em>Note: The larger the number of folds, the longer the training time, on the other hand, the results are more reliable.</em></p> <p>Pythorch-Lightning will save the best model in the folder <code class="language-plaintext highlighter-rouge">bin/sentiment_classfy/</code>. You can load the model as follows:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">model</span> <span class="o">=</span> <span class="n">Net</span><span class="p">.</span><span class="nf">load_from_checkpoint</span><span class="p">(</span><span class="sh">'</span><span class="s">bin/sentiment_classfy/aspect_extraction_sentiment_classfy_test-epoch=10-val_loss=0.00.ckpt</span><span class="sh">'</span><span class="p">)</span>
+</code></pre></div></div> <p>Also, it logs the metrics in the folder <code class="language-plaintext highlighter-rouge">lightning_logs/</code>. You can visualize the metrics using TensorBoard in a jupyter-cell as follows:</p> <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>tensorboard <span class="nt">--logdir</span> lightning_logs/
+</code></pre></div></div> <h4 id="results">Results</h4> <p>After training the table reports the results obtained on the testset:</p> <table> <thead> <tr> <th>Fold</th> <th>lr</th> <th>AspectAccuracy</th> <th>AspF1</th> <th>AspPrecision</th> <th>AspRecall</th> <th>PolarityAccuracy</th> <th>PolarityF1</th> <th>PolarityPrecision</th> <th>PolarityRecall</th> </tr> </thead> <tbody> <tr> <td>0</td> <td>5e-5</td> <td>96.7%</td> <td>93.9%</td> <td>92%</td> <td>95.8%</td> <td>96.8%</td> <td>94.3%</td> <td>99.2%</td> <td>93.3%</td> </tr> <tr> <td>3</td> <td>5e-5</td> <td>96.4%</td> <td>93%</td> <td>93%</td> <td>95%</td> <td>97%</td> <td>94%</td> <td>98.1%</td> <td>93.1%</td> </tr> </tbody> </table> <p>Due to its representativeness, a proper splitting of the dataset can lead the model to better generalize on the testset. Even if on the testset some models achieve better scores is not the case that in real-world scenarios the model will perform better. For example, the model that achieves the best score on the validation set might have a lower score on the testset. In fact, the validation set might not be representative of the testset. For this reason, it is important to use a proper splitting of the dataset to have a better estimation of the model performance.</p> <h4 id="conclusion">Conclusion</h4> <p>In this activity, we developed a system to extract the aspect terms and jointly detect the polarity of these terms. Then we reported the results obtained from the test. The model can be the starting point for a more complex pipeline to detect trends in the feedback and help the companies improve their products and services.</p> <hr/> <p>References:</p> <ol> <li><a href="https://github.com/lixin4ever/E2E-TBSA/tree/master/data">SemEval2014</a></li> </ol> <hr/>]]></content><author><name></name></author><category term="nlp"/><category term="PyTorch,"/><category term="PyTorch-Lightning,"/><category term="nlp,"/><category term="sentiment-analysis,"/><category term="aspect-extraction,"/><category term="polarity-detection"/><summary type="html"><![CDATA[Developed a system to extract the aspect terms and jointly detect the polarity of these terms]]></summary></entry><entry><title type="html">Implementation of PSO</title><link href="https://r1cc4r2o.github.io/blog/2023/code-pso/" rel="alternate" type="text/html" title="Implementation of PSO"/><published>2023-04-08T15:09:00+00:00</published><updated>2023-04-08T15:09:00+00:00</updated><id>https://r1cc4r2o.github.io/blog/2023/code-pso</id><content type="html" xml:base="https://r1cc4r2o.github.io/blog/2023/code-pso/"><![CDATA[<p>The <strong>Particle Swarm Optimization (PSO)</strong> [<a href="https://en.wikipedia.org/wiki/Particle_swarm_optimization">2</a>] is a bio-inspired algorithm, it tries to mimic the <em>flocking behaviour of birds</em>. This algorithm can be used to solve optimization problems (e.g. the travelling salesman problem).</p> <p>The initial position of the birds (particles) are randomly generated. To mimic the birds flocking behaviour, the algorithm takes into account three aspects:</p> <ul> <li><strong>separation</strong>: maintain a certain distance from the other birds</li> <li><strong>alignment</strong>: align the velocity with the other birds</li> <li><strong>cohesion</strong>: move towards the centre of mass of the other birds</li> </ul> <p>In the literature, different implementations of the PSO algorithm. Also, research has proven that given a specific problem the performance of the algorithm can be improved by changing the topology [<a href="https://link.springer.com/chapter/10.1007/978-3-319-11857-4_16">1</a>]. The topology of the PSO is the way the birds are connected and how they influence each other.</p> <p>The algorithm has been influential in solving a wide range of problems, from engineering to economics and more [<a href="https://onlinelibrary.wiley.com/doi/10.1155/2008/685175">3</a>]. One of the candidate interpretations of the pseudo-code of the algorithm is available here [<a href="https://en.wikipedia.org/wiki/Particle_swarm_optimization">4</a>].</p> <p>At each step the algorithm, to update the position of the birds, uses the following equation:</p> \[\begin{equation} \vec{x}_{i}^{t+1} = \vec{x}_{i}^{t} + \vec{v}_{i}^{t+1} \end{equation}\] <p>where $\vec{x}<em>{i}^{t}$ is the position of the $i$-th bird at time $t$ and $\vec{v}</em>{i}^{t+1}$ is the velocity of the $i$-th bird at time $t+1$. The <strong>standard PSO algorithm</strong> to update the velocity of the birds uses the following equation:</p> \[\begin{equation} \vec{v}_{i}^{t+1} = \omega \vec{v}_{i}^{t} + c_{1} r_{1} (\vec{p}_{i}^{t} - \vec{x}_{i}^{t}) + c_{2} r_{2} (\vec{p}_{g}^{t} - \vec{x}_{i}^{t}) \end{equation}\] <p>Where:</p> <ul> <li>$\vec{v}_{i}^{t}$ is the velocity of the $i$-th bird at time $t$</li> <li>$\vec{x}_{i}^{t}$ is the position of the $i$-th bird at time $t$</li> <li>$\vec{p}_{i}^{t}$ is the best position of the $i$-th bird at time $t$</li> <li>$\vec{p}_{g}^{t}$ is the best position of the group at time $t$</li> <li>$\omega$ is the inertia weight</li> <li>$c_{1}$ and $c_{2}$ are the cognitive and social parameters</li> <li>$r_{1}$ and $r_{2}$ are random numbers in the range $[0,1]$ sampled from a uniform distribution</li> </ul> <p>The velocity take into account:</p> <ul> <li>inertia velocity: $\omega \vec{v}_{i}^{t}$</li> <li>cognitive velocity: $c_{1} r_{1} (\vec{p}<em>{i}^{t} - \vec{x}</em>{i}^{t})$</li> <li>social velocity: $c_{2} r_{2} (\vec{p}<em>{g}^{t} - \vec{x}</em>{i}^{t})$</li> </ul> <p>In general, on hard multimodal problems being able to escape from local minima is a key aspect ($r_{2} &gt; r_{1}$). The cognitive velocity summarizes the knowledge of the bird about its best position. While the social velocity summarizes the knowledge of the bird about the best position of the group. By the group we mean the birds that are connected to the bird. This aspect is related to the topology of the PSO. For example, the birds can be connected in a ring, in a star, in a wheel, etc. Also, the inertia velocity is used to escape from local minima. It measures the tendency of the bird to keep moving.</p> <p>Select the right values for the parameters $c_{1}$, $c_{2}$, $r_{1}$, $r_{2}$ and $\omega$ is not trivial. The performance of the algorithm is highly dependent on the parameters. In the literature can be found different approaches to select the parameters. For instance, the inertia weight can be selected as a linearly decreasing function of the number of iterations.</p> <h5 id="python-implementation">Python implementation</h5> <p>One of the most common implementations of the PSO algorithm can be found in the following <a href="https://towardsdatascience.com/swarm-intelligence-coding-and-visualising-particle-swarm-optimisation-in-python-253e1bd00772">here</a>. This implementation, on the other hand, considers to update the velocity of the birds (equation 2) using dynamic social and cognitive parameters ($r_{1}$ and $r_{2}$).</p> <p>Import the required libraries:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kn">import</span> <span class="n">numpy</span> <span class="k">as</span> <span class="n">np</span>
+<span class="kn">import</span> <span class="n">random</span>
+<span class="kn">from</span> <span class="n">matplotlib</span> <span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+<span class="kn">from</span> <span class="n">matplotlib</span> <span class="kn">import</span> <span class="n">animation</span>
+<span class="kn">from</span> <span class="n">numpy</span> <span class="kn">import</span> <span class="n">exp</span>
+<span class="kn">from</span> <span class="n">numpy</span> <span class="kn">import</span> <span class="n">sqrt</span>
+<span class="kn">from</span> <span class="n">numpy</span> <span class="kn">import</span> <span class="n">cos</span>
+<span class="kn">from</span> <span class="n">numpy</span> <span class="kn">import</span> <span class="n">e</span>
+<span class="kn">from</span> <span class="n">numpy</span> <span class="kn">import</span> <span class="n">pi</span>
+</code></pre></div></div> <p>The following function is used to update the position of the birds:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">update_p</span><span class="p">(</span><span class="n">particle</span><span class="p">,</span> <span class="n">velocity</span><span class="p">):</span>
+  <span class="sh">"""</span><span class="s">Update the position of the particles
+
+  Args:
+    particle: current position of the particles
+    velocity: velocity of the particles
+
+  Output:
+    _ : updated position of the particles
+
+  </span><span class="sh">"""</span>
+  <span class="k">return</span> <span class="n">particle</span> <span class="o">+</span> <span class="n">velocity</span>
+</code></pre></div></div> <p>The following function is used to update the velocity of the birds:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">update_v</span><span class="p">(</span><span class="n">velocity</span><span class="p">,</span> <span class="n">particles</span><span class="p">,</span> <span class="n">pbest</span><span class="p">,</span> <span class="n">gbest</span><span class="p">):</span>
+  <span class="sh">"""</span><span class="s"> Update the velocity of the particles
+  Implementation slide 12 group of slide
+  on particle swarm optimization
+
+  Args:
+    velocity: velocity of the particles
+    particles: current position of the particles
+    pbest: best position of the particles
+    gbest: best position of the swarm
+
+  Output:
+    new_velocity: updated velocity of the particles
+
+  </span><span class="sh">"""</span>
+  <span class="c1"># number of particles
+</span>  <span class="n">n_particles</span> <span class="o">=</span> <span class="nf">len</span><span class="p">(</span><span class="n">particles</span><span class="p">)</span>
+
+  <span class="c1"># fi determine the particle trajectory
+</span>  <span class="n">fi</span> <span class="o">=</span> <span class="n">random</span><span class="p">.</span><span class="nf">uniform</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.4</span><span class="p">)</span>
+
+  <span class="c1"># initialize the weight formula 
+</span>  <span class="c1"># slide 14 (convergence condition)
+</span>  <span class="n">w</span> <span class="o">=</span> <span class="n">random</span><span class="p">.</span><span class="nf">uniform</span><span class="p">((</span><span class="mf">0.5</span><span class="o">*</span><span class="p">(</span><span class="n">fi</span><span class="o">+</span><span class="n">fi</span><span class="p">)),</span> <span class="mi">1</span><span class="p">)</span>
+
+  <span class="c1"># initialize the velocity to zero
+</span>  <span class="n">new_velocity</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">array</span><span class="p">([</span><span class="mf">0.0</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">n_particles</span><span class="p">)])</span>
+
+  <span class="c1"># random number piked from a uniform distribution
+</span>  <span class="n">u1</span> <span class="o">=</span> <span class="n">random</span><span class="p">.</span><span class="nf">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+  <span class="n">u2</span> <span class="o">=</span> <span class="n">random</span><span class="p">.</span><span class="nf">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+
+  <span class="c1"># update the velocity
+</span>  <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">n_particles</span><span class="p">):</span>
+    <span class="c1"># slide 12
+</span>    <span class="n">new_velocity</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">w</span> <span class="o">*</span> <span class="n">velocity</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="n">fi</span> <span class="o">*</span> <span class="n">u1</span> <span class="o">*</span> <span class="p">(</span><span class="n">pbest</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">particles</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="o">+</span> <span class="n">fi</span> <span class="o">*</span> <span class="n">u2</span> <span class="o">*</span> <span class="p">(</span><span class="n">gbest</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">particles</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
+  <span class="k">return</span> <span class="n">new_velocity</span>
+</code></pre></div></div> <p>Afterwards, to benchmark the algorithm, we can use the following fitness function:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">fitness_fn</span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">):</span>
+  <span class="sh">"""</span><span class="s">Fitness function</span><span class="sh">"""</span>
+  <span class="c1"># Ackley
+</span>  <span class="k">return</span> <span class="o">-</span><span class="mf">20.0</span> <span class="o">*</span> <span class="nf">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">0.2</span> <span class="o">*</span> <span class="nf">sqrt</span><span class="p">(</span><span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">x</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">y</span><span class="o">**</span><span class="mi">2</span><span class="p">)))</span> <span class="o">-</span> <span class="nf">exp</span><span class="p">(</span><span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="nf">cos</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">pi</span> <span class="o">*</span> <span class="n">x</span><span class="p">)</span> <span class="o">+</span> <span class="nf">cos</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">pi</span> <span class="o">*</span> <span class="n">y</span><span class="p">)))</span> <span class="o">+</span> <span class="n">e</span> <span class="o">+</span> <span class="mi">20</span>
+  <span class="c1"># Griewank
+</span>  <span class="c1"># source: https://spotpy.readthedocs.io/en/latest/Griewank/
+</span>  <span class="c1"># return 1 + (x**2 + y**2)/4000 - cos(x/sqrt(2))*cos(y/sqrt(3))+1
+</span>  <span class="c1"># Schwefel
+</span>  <span class="c1"># return 418.9829*2 - x * sin( sqrt( abs( x )))-y*sin(sqrt(abs(y)))
+</span>  <span class="c1"># Rosenbrock
+</span>  <span class="c1"># source: https://spotpy.readthedocs.io/en/latest/Rosenbrock/
+</span>  <span class="c1"># return (1-x)**2 + 100*(y-x**2)**2
+</span>  <span class="c1"># Rastrigin 
+</span>  <span class="c1"># return 10*2 + x**2 + y**2 - 10*cos(2*pi*x) - 10*cos(2*pi*y)
+</span></code></pre></div></div> <p><em>Note: the fitness function can be changed to benchmark the algorithm on different problems. You could also write your own fitness function to benchmark the algorithm on a specific problem.</em></p> <p>Then, the following function is used to initialize the particles and start the optimization process:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="n">population</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">30</span><span class="p">,</span> <span class="n">dimension</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span> <span class="n">generation</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">pos_min</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">200</span><span class="p">,</span> <span class="n">pos_max</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">200</span><span class="p">):</span>
+
+  <span class="c1"># Plotting prepartion
+</span>  <span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="p">.</span><span class="nf">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">))</span>
+  <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="p">.</span><span class="nf">add_subplot</span><span class="p">(</span><span class="mi">111</span><span class="p">,</span> <span class="n">projection</span><span class="o">=</span><span class="sh">'</span><span class="s">3d</span><span class="sh">'</span><span class="p">)</span>
+  <span class="n">ax</span><span class="p">.</span><span class="nf">set_xlabel</span><span class="p">(</span><span class="sh">'</span><span class="s">x</span><span class="sh">'</span><span class="p">)</span>
+  <span class="n">ax</span><span class="p">.</span><span class="nf">set_ylabel</span><span class="p">(</span><span class="sh">'</span><span class="s">y</span><span class="sh">'</span><span class="p">)</span>
+  <span class="n">ax</span><span class="p">.</span><span class="nf">set_zlabel</span><span class="p">(</span><span class="sh">'</span><span class="s">z</span><span class="sh">'</span><span class="p">)</span>
+  <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">linspace</span><span class="p">(</span><span class="n">pos_min</span><span class="p">,</span> <span class="n">pos_max</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+  <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">linspace</span><span class="p">(</span><span class="n">pos_min</span><span class="p">,</span> <span class="n">pos_max</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+  <span class="n">X</span><span class="p">,</span> <span class="n">Y</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">meshgrid</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+  <span class="n">Z</span><span class="o">=</span> <span class="nf">fitness_fn</span><span class="p">(</span><span class="n">X</span><span class="p">,</span><span class="n">Y</span><span class="p">)</span>
+  <span class="n">ax</span><span class="p">.</span><span class="nf">plot_wireframe</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="sh">'</span><span class="s">r</span><span class="sh">'</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span>
+
+  <span class="c1"># Animation image placeholder
+</span>  <span class="n">images</span> <span class="o">=</span> <span class="p">[]</span>
+
+  <span class="c1"># initialize the population
+</span>  <span class="n">particles</span> <span class="o">=</span> <span class="p">[[</span><span class="n">random</span><span class="p">.</span><span class="nf">uniform</span><span class="p">(</span><span class="n">pos_min</span><span class="p">,</span> <span class="n">pos_max</span><span class="p">)</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">dimension</span><span class="p">)]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">population</span><span class="p">)]</span>
+
+  <span class="c1"># compute the fitness of the particles
+</span>  <span class="n">pfitness</span> <span class="o">=</span> <span class="p">[</span><span class="nf">fitness_fn</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">particles</span><span class="p">]</span>
+
+  <span class="c1"># index particle with the best fitness
+</span>  <span class="n">index_gbest</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">argmin</span><span class="p">(</span><span class="n">pfitness</span><span class="p">)</span>
+
+  <span class="c1"># position of the particle with the best fitness
+</span>  <span class="n">position_gbest</span> <span class="o">=</span> <span class="n">particles</span><span class="p">[</span><span class="n">index_gbest</span><span class="p">]</span>
+
+  <span class="c1"># initialize the velocity equal to zero
+</span>  <span class="n">velocity</span> <span class="o">=</span> <span class="p">[[</span><span class="mf">0.0</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">dimension</span><span class="p">)]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">population</span><span class="p">)]</span>
+
+  <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">generation</span><span class="p">):</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">population</span><span class="p">):</span>
+      <span class="c1"># update the velocity
+</span>      <span class="n">velocity</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="nf">update_v</span><span class="p">(</span><span class="n">velocity</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">particles</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">particles</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">position_gbest</span><span class="p">)</span>
+
+      <span class="c1"># update the position
+</span>      <span class="n">particles</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="nf">update_p</span><span class="p">(</span><span class="n">particles</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">velocity</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
+
+    <span class="c1"># Plotting
+</span>    <span class="n">image</span> <span class="o">=</span> <span class="n">ax</span><span class="p">.</span><span class="nf">scatter3D</span><span class="p">([</span><span class="n">particles</span><span class="p">[</span><span class="n">n</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">population</span><span class="p">)],</span>
+                        <span class="p">[</span><span class="n">particles</span><span class="p">[</span><span class="n">n</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">population</span><span class="p">)],</span>
+                        <span class="p">[</span><span class="nf">fitness_fn</span><span class="p">(</span><span class="n">particles</span><span class="p">[</span><span class="n">n</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span><span class="n">particles</span><span class="p">[</span><span class="n">n</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">population</span><span class="p">)],</span> <span class="n">c</span><span class="o">=</span><span class="sh">'</span><span class="s">b</span><span class="sh">'</span><span class="p">)</span>
+    <span class="n">images</span><span class="p">.</span><span class="nf">append</span><span class="p">([</span><span class="n">image</span><span class="p">])</span>
+
+    <span class="c1"># compute the fitness of the particles
+</span>    <span class="n">pfitness</span> <span class="o">=</span> <span class="p">[</span><span class="nf">fitness_fn</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">particles</span><span class="p">]</span>
+
+    <span class="c1"># index particle with the best fitness
+</span>    <span class="n">index_gbest</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">argmin</span><span class="p">(</span><span class="n">pfitness</span><span class="p">)</span>
+
+    <span class="c1"># position of the particle with the best fitness
+</span>    <span class="n">position_gbest</span> <span class="o">=</span> <span class="n">particles</span><span class="p">[</span><span class="n">index_gbest</span><span class="p">]</span>
+
+  <span class="c1"># Generate the animation image and save
+</span>  <span class="n">animated_image</span> <span class="o">=</span> <span class="n">animation</span><span class="p">.</span><span class="nc">ArtistAnimation</span><span class="p">(</span><span class="n">fig</span><span class="p">,</span> <span class="n">images</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">blit</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">repeat_delay</span><span class="o">=</span><span class="mi">1000</span><span class="p">)</span>
+  <span class="n">animated_image</span><span class="p">.</span><span class="nf">save</span><span class="p">(</span><span class="sa">f</span><span class="sh">'</span><span class="s">./gif_pso_swarm_simulation</span><span class="si">{</span><span class="n">problem</span><span class="si">}</span><span class="s">.mp4</span><span class="sh">'</span><span class="p">,</span> <span class="n">fps</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span> 
+
+  <span class="k">return</span> <span class="n">position_gbest</span><span class="p">,</span> <span class="n">pfitness</span><span class="p">[</span><span class="n">index_gbest</span><span class="p">],</span> <span class="n">np</span><span class="p">.</span><span class="nf">average</span><span class="p">(</span><span class="n">pfitness</span><span class="p">),</span> <span class="n">images</span>
+</code></pre></div></div> <p>To visualize the optimization process we can rely on the <code class="language-plaintext highlighter-rouge">animation.ArtistAnimation</code> which allows to generate a gif/mp4 file.</p> <p>To run the algorithm we can do the following:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">position_gbest</span><span class="p">,</span> <span class="n">pfitness</span><span class="p">,</span> <span class="n">average_fitness</span><span class="p">,</span> <span class="n">images</span> <span class="o">=</span> <span class="nf">fit</span><span class="p">()</span>
+</code></pre></div></div> <h5 id="results">Results</h5> <p>The figures compare on the left the implementation of the PSO with $r_{1}$, $r_{2}$ uniformly sampled from a uniform distribution in the range $[0.1,0.4]$. On the right, the implementation of the PSO with $r_{1}$, $r_{2}$ statically set to $0.1$.</p> <p align="center" width="100%"> <a href="https://imgur.com/1Aas09P"><img src="https://i.imgur.com/1Aas09P.gif" title="source: imgur.com" width="49%"/></a> <a href="https://imgur.com/avzNVGQ"><img src="https://i.imgur.com/avzNVGQ.gif" title="source: imgur.com" width="49%"/></a> </p> <p>Also, repoted below there are the gif of the optimization process on other fitness functions.</p> <p align="center" width="100%"> <a href="https://imgur.com/h6mm9Fl"><img src="https://i.imgur.com/h6mm9Fl.gif" title="source: imgur.com" width="49%"/></a> <a href="https://imgur.com/lhus5DC"><img src="https://i.imgur.com/lhus5DC.gif" title="source: imgur.com" width="49%"/></a> </p> <p align="center" width="100%"> <a href="https://imgur.com/PegfxGG"><img src="https://i.imgur.com/PegfxGG.gif" title="source: imgur.com" width="49%"/></a> <a href="https://imgur.com/NOHEUHP"><img src="https://i.imgur.com/NOHEUHP.gif" title="source: imgur.com" width="49%"/></a> </p> <p><em>Note: The figures report the optimization with the PSO using $r_{1}$, $r_{2}$ uniformly sampled from a uniform distribution in the range $[0.1,0.4]$.</em></p> <p>Here the full code:</p> <div class="language-python highlighter-rouge"><div class="highlight"><pre class="highlight"><code>
+<span class="kn">import</span> <span class="n">numpy</span> <span class="k">as</span> <span class="n">np</span>
+<span class="kn">import</span> <span class="n">random</span>
+<span class="kn">from</span> <span class="n">matplotlib</span> <span class="kn">import</span> <span class="n">pyplot</span> <span class="k">as</span> <span class="n">plt</span>
+<span class="kn">from</span> <span class="n">matplotlib</span> <span class="kn">import</span> <span class="n">animation</span>
+<span class="kn">from</span> <span class="n">numpy</span> <span class="kn">import</span> <span class="n">exp</span>
+<span class="kn">from</span> <span class="n">numpy</span> <span class="kn">import</span> <span class="n">sqrt</span>
+<span class="kn">from</span> <span class="n">numpy</span> <span class="kn">import</span> <span class="n">cos</span>
+<span class="kn">from</span> <span class="n">numpy</span> <span class="kn">import</span> <span class="n">e</span>
+<span class="kn">from</span> <span class="n">numpy</span> <span class="kn">import</span> <span class="n">pi</span>
+
+<span class="c1"># source: https://towardsdatascience.com/swarm-intelligence-coding-and-visualising-particle-swarm-optimisation-in-python-253e1bd00772
+</span>
+<span class="n">problem</span> <span class="o">=</span> <span class="sh">'</span><span class="s">Rastrigin</span><span class="sh">'</span>
+<span class="c1"># I use the rastrigin function as an example
+</span><span class="k">def</span> <span class="nf">fitness_fn</span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">):</span>
+  <span class="sh">"""</span><span class="s">Fitness function</span><span class="sh">"""</span>
+  <span class="c1"># Ackley
+</span>  <span class="k">return</span> <span class="o">-</span><span class="mf">20.0</span> <span class="o">*</span> <span class="nf">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">0.2</span> <span class="o">*</span> <span class="nf">sqrt</span><span class="p">(</span><span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">x</span><span class="o">**</span><span class="mi">2</span> <span class="o">+</span> <span class="n">y</span><span class="o">**</span><span class="mi">2</span><span class="p">)))</span> <span class="o">-</span> <span class="nf">exp</span><span class="p">(</span><span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="nf">cos</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">pi</span> <span class="o">*</span> <span class="n">x</span><span class="p">)</span> <span class="o">+</span> <span class="nf">cos</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">pi</span> <span class="o">*</span> <span class="n">y</span><span class="p">)))</span> <span class="o">+</span> <span class="n">e</span> <span class="o">+</span> <span class="mi">20</span>
+  <span class="c1"># Griewank
+</span>  <span class="c1"># source: https://spotpy.readthedocs.io/en/latest/Griewank/
+</span>  <span class="c1"># return 1 + (x**2 + y**2)/4000 - cos(x/sqrt(2))*cos(y/sqrt(3))+1
+</span>  <span class="c1"># Schwefel
+</span>  <span class="c1"># return 418.9829*2 - x * sin( sqrt( abs( x )))-y*sin(sqrt(abs(y)))
+</span>  <span class="c1"># Rosenbrock
+</span>  <span class="c1"># source: https://spotpy.readthedocs.io/en/latest/Rosenbrock/
+</span>  <span class="c1"># return (1-x)**2 + 100*(y-x**2)**2
+</span>  <span class="c1"># Rastrigin 
+</span>  <span class="c1"># return 10*2 + x**2 + y**2 - 10*cos(2*pi*x) - 10*cos(2*pi*y)
+</span>
+
+<span class="k">def</span> <span class="nf">update_v</span><span class="p">(</span><span class="n">velocity</span><span class="p">,</span> <span class="n">particles</span><span class="p">,</span> <span class="n">pbest</span><span class="p">,</span> <span class="n">gbest</span><span class="p">):</span>
+  <span class="sh">"""</span><span class="s"> Update the velocity of the particles
+  Implementation slide 12 group of slide
+  on particle swarm optimization
+
+  Args:
+    velocity: velocity of the particles
+    particles: current position of the particles
+    pbest: best position of the particles
+    gbest: best position of the swarm
+
+  Output:
+    new_velocity: updated velocity of the particles
+
+  </span><span class="sh">"""</span>
+  <span class="c1"># number of particles
+</span>  <span class="n">n_particles</span> <span class="o">=</span> <span class="nf">len</span><span class="p">(</span><span class="n">particles</span><span class="p">)</span>
+
+  <span class="c1"># fi determine the particle trajectory
+</span>  <span class="n">fi</span> <span class="o">=</span> <span class="n">random</span><span class="p">.</span><span class="nf">uniform</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.4</span><span class="p">)</span>
+
+  <span class="c1"># initialize the weight formula 
+</span>  <span class="c1"># slide 14 (convergence condition)
+</span>  <span class="n">w</span> <span class="o">=</span> <span class="n">random</span><span class="p">.</span><span class="nf">uniform</span><span class="p">((</span><span class="mf">0.5</span><span class="o">*</span><span class="p">(</span><span class="n">fi</span><span class="o">+</span><span class="n">fi</span><span class="p">)),</span> <span class="mi">1</span><span class="p">)</span>
+
+  <span class="c1"># initialize the velocity to zero
+</span>  <span class="n">new_velocity</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">array</span><span class="p">([</span><span class="mf">0.0</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">n_particles</span><span class="p">)])</span>
+
+  <span class="c1"># random number piked from a uniform distribution
+</span>  <span class="n">u1</span> <span class="o">=</span> <span class="n">random</span><span class="p">.</span><span class="nf">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+  <span class="n">u2</span> <span class="o">=</span> <span class="n">random</span><span class="p">.</span><span class="nf">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">)</span>
+
+  <span class="c1"># update the velocity
+</span>  <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">n_particles</span><span class="p">):</span>
+    <span class="c1"># slide 12
+</span>    <span class="n">new_velocity</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">w</span> <span class="o">*</span> <span class="n">velocity</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="n">fi</span> <span class="o">*</span> <span class="n">u1</span> <span class="o">*</span> <span class="p">(</span><span class="n">pbest</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">particles</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="o">+</span> <span class="n">fi</span> <span class="o">*</span> <span class="n">u2</span> <span class="o">*</span> <span class="p">(</span><span class="n">gbest</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">particles</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
+  <span class="k">return</span> <span class="n">new_velocity</span>
+
+
+<span class="k">def</span> <span class="nf">update_p</span><span class="p">(</span><span class="n">particle</span><span class="p">,</span> <span class="n">velocity</span><span class="p">):</span>
+  <span class="sh">"""</span><span class="s">Update the position of the particles
+
+  Args:
+    particle: current position of the particles
+    velocity: velocity of the particles
+
+  Output:
+    _ : updated position of the particles
+
+  </span><span class="sh">"""</span>
+  <span class="k">return</span> <span class="n">particle</span> <span class="o">+</span> <span class="n">velocity</span>
+
+<span class="k">def</span> <span class="nf">fit</span><span class="p">(</span><span class="n">population</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">30</span><span class="p">,</span> <span class="n">dimension</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span><span class="p">,</span> <span class="n">generation</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> <span class="n">pos_min</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="o">-</span><span class="mi">200</span><span class="p">,</span> <span class="n">pos_max</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">200</span><span class="p">):</span>
+
+  <span class="c1"># Plotting prepartion
+</span>  <span class="n">fig</span> <span class="o">=</span> <span class="n">plt</span><span class="p">.</span><span class="nf">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">))</span>
+  <span class="n">ax</span> <span class="o">=</span> <span class="n">fig</span><span class="p">.</span><span class="nf">add_subplot</span><span class="p">(</span><span class="mi">111</span><span class="p">,</span> <span class="n">projection</span><span class="o">=</span><span class="sh">'</span><span class="s">3d</span><span class="sh">'</span><span class="p">)</span>
+  <span class="n">ax</span><span class="p">.</span><span class="nf">set_xlabel</span><span class="p">(</span><span class="sh">'</span><span class="s">x</span><span class="sh">'</span><span class="p">)</span>
+  <span class="n">ax</span><span class="p">.</span><span class="nf">set_ylabel</span><span class="p">(</span><span class="sh">'</span><span class="s">y</span><span class="sh">'</span><span class="p">)</span>
+  <span class="n">ax</span><span class="p">.</span><span class="nf">set_zlabel</span><span class="p">(</span><span class="sh">'</span><span class="s">z</span><span class="sh">'</span><span class="p">)</span>
+  <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">linspace</span><span class="p">(</span><span class="n">pos_min</span><span class="p">,</span> <span class="n">pos_max</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+  <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">linspace</span><span class="p">(</span><span class="n">pos_min</span><span class="p">,</span> <span class="n">pos_max</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+  <span class="n">X</span><span class="p">,</span> <span class="n">Y</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">meshgrid</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+  <span class="n">Z</span><span class="o">=</span> <span class="nf">fitness_fn</span><span class="p">(</span><span class="n">X</span><span class="p">,</span><span class="n">Y</span><span class="p">)</span>
+  <span class="n">ax</span><span class="p">.</span><span class="nf">plot_wireframe</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="sh">'</span><span class="s">r</span><span class="sh">'</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span>
+
+  <span class="c1"># Animation image placeholder
+</span>  <span class="n">images</span> <span class="o">=</span> <span class="p">[]</span>
+
+  <span class="c1"># initialize the population
+</span>  <span class="n">particles</span> <span class="o">=</span> <span class="p">[[</span><span class="n">random</span><span class="p">.</span><span class="nf">uniform</span><span class="p">(</span><span class="n">pos_min</span><span class="p">,</span> <span class="n">pos_max</span><span class="p">)</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">dimension</span><span class="p">)]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">population</span><span class="p">)]</span>
+
+  <span class="c1"># compute the fitness of the particles
+</span>  <span class="n">pfitness</span> <span class="o">=</span> <span class="p">[</span><span class="nf">fitness_fn</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">particles</span><span class="p">]</span>
+
+  <span class="c1"># index particle with the best fitness
+</span>  <span class="n">index_gbest</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">argmin</span><span class="p">(</span><span class="n">pfitness</span><span class="p">)</span>
+
+  <span class="c1"># position of the particle with the best fitness
+</span>  <span class="n">position_gbest</span> <span class="o">=</span> <span class="n">particles</span><span class="p">[</span><span class="n">index_gbest</span><span class="p">]</span>
+
+  <span class="c1"># initialize the velocity equal to zero
+</span>  <span class="n">velocity</span> <span class="o">=</span> <span class="p">[[</span><span class="mf">0.0</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">dimension</span><span class="p">)]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">population</span><span class="p">)]</span>
+
+  <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">generation</span><span class="p">):</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">population</span><span class="p">):</span>
+      <span class="c1"># update the velocity
+</span>      <span class="n">velocity</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="nf">update_v</span><span class="p">(</span><span class="n">velocity</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">particles</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">particles</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">position_gbest</span><span class="p">)</span>
+
+      <span class="c1"># update the position
+</span>      <span class="n">particles</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="nf">update_p</span><span class="p">(</span><span class="n">particles</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">velocity</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
+
+    <span class="c1"># Plotting
+</span>    <span class="n">image</span> <span class="o">=</span> <span class="n">ax</span><span class="p">.</span><span class="nf">scatter3D</span><span class="p">([</span><span class="n">particles</span><span class="p">[</span><span class="n">n</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">population</span><span class="p">)],</span>
+                        <span class="p">[</span><span class="n">particles</span><span class="p">[</span><span class="n">n</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">population</span><span class="p">)],</span>
+                        <span class="p">[</span><span class="nf">fitness_fn</span><span class="p">(</span><span class="n">particles</span><span class="p">[</span><span class="n">n</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span><span class="n">particles</span><span class="p">[</span><span class="n">n</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="nf">range</span><span class="p">(</span><span class="n">population</span><span class="p">)],</span> <span class="n">c</span><span class="o">=</span><span class="sh">'</span><span class="s">b</span><span class="sh">'</span><span class="p">)</span>
+    <span class="n">images</span><span class="p">.</span><span class="nf">append</span><span class="p">([</span><span class="n">image</span><span class="p">])</span>
+
+    <span class="c1"># compute the fitness of the particles
+</span>    <span class="n">pfitness</span> <span class="o">=</span> <span class="p">[</span><span class="nf">fitness_fn</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">particles</span><span class="p">]</span>
+
+    <span class="c1"># index particle with the best fitness
+</span>    <span class="n">index_gbest</span> <span class="o">=</span> <span class="n">np</span><span class="p">.</span><span class="nf">argmin</span><span class="p">(</span><span class="n">pfitness</span><span class="p">)</span>
+
+    <span class="c1"># position of the particle with the best fitness
+</span>    <span class="n">position_gbest</span> <span class="o">=</span> <span class="n">particles</span><span class="p">[</span><span class="n">index_gbest</span><span class="p">]</span>
+
+  <span class="c1"># Generate the animation image and save
+</span>  <span class="n">animated_image</span> <span class="o">=</span> <span class="n">animation</span><span class="p">.</span><span class="nc">ArtistAnimation</span><span class="p">(</span><span class="n">fig</span><span class="p">,</span> <span class="n">images</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">blit</span><span class="o">=</span><span class="bp">True</span><span class="p">,</span> <span class="n">repeat_delay</span><span class="o">=</span><span class="mi">1000</span><span class="p">)</span>
+  <span class="n">animated_image</span><span class="p">.</span><span class="nf">save</span><span class="p">(</span><span class="sa">f</span><span class="sh">'</span><span class="s">./gif_pso_swarm_simulation</span><span class="si">{</span><span class="n">problem</span><span class="si">}</span><span class="s">.mp4</span><span class="sh">'</span><span class="p">,</span> <span class="n">fps</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span> 
+
+  <span class="k">return</span> <span class="n">position_gbest</span><span class="p">,</span> <span class="n">pfitness</span><span class="p">[</span><span class="n">index_gbest</span><span class="p">],</span> <span class="n">np</span><span class="p">.</span><span class="nf">average</span><span class="p">(</span><span class="n">pfitness</span><span class="p">),</span> <span class="n">images</span>
+
+<span class="n">position_gbest</span><span class="p">,</span> <span class="n">pfitness</span><span class="p">,</span> <span class="n">average_fitness</span><span class="p">,</span> <span class="n">images</span> <span class="o">=</span> <span class="nf">fit</span><span class="p">()</span>
+</code></pre></div></div> <hr/> <p>References:</p> <ol> <li><a href="https://link.springer.com/chapter/10.1007/978-3-319-11857-4_16">Topology Optimization of Particle Swarm Optimization</a></li> <li><a href="https://en.wikipedia.org/wiki/Particle_swarm_optimization">Particle swarm optimization</a></li> <li><a href="https://onlinelibrary.wiley.com/doi/10.1155/2008/685175">Analysis of the Publications on the Applications of Particle Swarm Optimisation</a></li> <li><a href="https://en.wikipedia.org/wiki/Particle_swarm_optimization">Particle swarm optimization</a></li> </ol> <hr/>]]></content><author><name></name></author><category term="bio-inspired-computing"/><category term="Python"/><category term="particle-simulation"/><summary type="html"><![CDATA[implementation of PSO with dynamic social and cognitive parameters]]></summary></entry><entry><title type="html">Matrix multiplication from C++ to CUDA</title><link href="https://r1cc4r2o.github.io/blog/2020/code-cuda/" rel="alternate" type="text/html" title="Matrix multiplication from C++ to CUDA"/><published>2020-05-16T15:09:00+00:00</published><updated>2020-05-16T15:09:00+00:00</updated><id>https://r1cc4r2o.github.io/blog/2020/code-cuda</id><content type="html" xml:base="https://r1cc4r2o.github.io/blog/2020/code-cuda/"><![CDATA[<p>The following code is a simple matrix multiplication tutorial proposing a comparison between the sequential and parallel implementation (C++ and CUDA). The CUDA documentation is available <a href="https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html">here</a>.</p> <h4 id="c-implementation">C++ implementation</h4> <p>First things first, we need to import for the C++ implementation the following libraries:</p> <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include</span> <span class="cpf">&lt;iostream&gt;</span><span class="c1"> </span><span class="cp">
+#include</span> <span class="cpf">&lt;vector&gt;</span><span class="c1"> // for vector</span><span class="cp">
+#include</span> <span class="cpf">&lt;thread&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;chrono&gt;</span><span class="c1"> // for time</span><span class="cp">
+</span>
+<span class="k">using</span> <span class="k">namespace</span> <span class="n">std</span><span class="p">;</span>
+</code></pre></div></div> <p>We define the matrix class as follows, the matrix is a vector of vectors of integers. The constructor initialises the matrix with zeros and takes the number of rows and columns as input. The set and get methods are used to set and get the value of an element of the array. The print method is used to print the matrix.</p> <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// Matrix class</span>
+<span class="k">class</span> <span class="nc">Matrix</span> <span class="p">{</span>
+    <span class="nl">private:</span>
+        <span class="kt">int</span> <span class="n">rows</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">cols</span><span class="p">;</span>
+        <span class="n">vector</span><span class="o">&lt;</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&gt;</span> <span class="n">matrix</span><span class="p">;</span>
+    <span class="nl">public:</span>
+        <span class="n">Matrix</span><span class="p">(</span><span class="kt">int</span> <span class="n">rows</span><span class="p">,</span> <span class="kt">int</span> <span class="n">cols</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">this</span><span class="o">-&gt;</span><span class="n">rows</span> <span class="o">=</span> <span class="n">rows</span><span class="p">;</span>
+            <span class="k">this</span><span class="o">-&gt;</span><span class="n">cols</span> <span class="o">=</span> <span class="n">cols</span><span class="p">;</span>
+            <span class="k">this</span><span class="o">-&gt;</span><span class="n">matrix</span> <span class="o">=</span> <span class="n">vector</span><span class="o">&lt;</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&gt;</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span><span class="n">cols</span><span class="p">,</span> <span class="mi">0</span><span class="p">));</span>
+        <span class="p">}</span>
+        <span class="kt">void</span> <span class="nf">set</span><span class="p">(</span><span class="kt">int</span> <span class="n">row</span><span class="p">,</span> <span class="kt">int</span> <span class="n">col</span><span class="p">,</span> <span class="kt">int</span> <span class="n">value</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">this</span><span class="o">-&gt;</span><span class="n">matrix</span><span class="p">[</span><span class="n">row</span><span class="p">][</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="kt">int</span> <span class="nf">get</span><span class="p">(</span><span class="kt">int</span> <span class="n">row</span><span class="p">,</span> <span class="kt">int</span> <span class="n">col</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">matrix</span><span class="p">[</span><span class="n">row</span><span class="p">][</span><span class="n">col</span><span class="p">];</span>
+        <span class="p">}</span>
+        <span class="kt">int</span> <span class="nf">getRows</span><span class="p">()</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">rows</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="kt">int</span> <span class="nf">getCols</span><span class="p">()</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">cols</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="kt">void</span> <span class="nf">print</span><span class="p">()</span> <span class="p">{</span>
+            <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">rows</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">cols</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">matrix</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="s">" "</span><span class="p">;</span>
+                <span class="p">}</span>
+                <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="n">endl</span><span class="p">;</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+<span class="p">};</span>
+</code></pre></div></div> <p>Then, we define the matrix multiplication function. The function takes as input three matrices, the first two are the matrices to multiply and the third is the matrix the resulting matrix after the multiplication. Start and end can be used to specify the range of rows to compute. Thus, the function can be used in parallel, and the results can be joined at the end.</p> <p>The function iterates over the rows of the first matrix and the columns of the second matrix and computes the value of the element of the result matrix. To update the values in the third matrix, we use the set method defined in the matrix class.</p> <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// Matrix multiplication</span>
+<span class="kt">void</span> <span class="nf">multiply</span><span class="p">(</span><span class="n">Matrix</span> <span class="o">*</span><span class="n">A</span><span class="p">,</span> <span class="n">Matrix</span> <span class="o">*</span><span class="n">B</span><span class="p">,</span> <span class="n">Matrix</span> <span class="o">*</span><span class="n">C</span><span class="p">,</span> <span class="kt">int</span> <span class="n">start</span><span class="p">,</span> <span class="kt">int</span> <span class="n">end</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">int</span> <span class="n">rows</span> <span class="o">=</span> <span class="n">A</span><span class="o">-&gt;</span><span class="n">getRows</span><span class="p">();</span>
+    <span class="kt">int</span> <span class="n">cols</span> <span class="o">=</span> <span class="n">B</span><span class="o">-&gt;</span><span class="n">getCols</span><span class="p">();</span>
+    <span class="kt">int</span> <span class="n">k</span> <span class="o">=</span> <span class="n">A</span><span class="o">-&gt;</span><span class="n">getCols</span><span class="p">();</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="n">start</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">end</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="n">cols</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="kt">int</span> <span class="n">sum</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+            <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">l</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">l</span> <span class="o">&lt;</span> <span class="n">k</span><span class="p">;</span> <span class="n">l</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">sum</span> <span class="o">+=</span> <span class="n">A</span><span class="o">-&gt;</span><span class="n">get</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">l</span><span class="p">)</span> <span class="o">*</span> <span class="n">B</span><span class="o">-&gt;</span><span class="n">get</span><span class="p">(</span><span class="n">l</span><span class="p">,</span> <span class="n">j</span><span class="p">);</span>
+            <span class="p">}</span>
+            <span class="n">C</span><span class="o">-&gt;</span><span class="n">set</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="n">sum</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div> <p>In order to keep the code in the main clean, we define a function to initialise the matrices. The function takes as input the number of rows and columns and returns a matrix initialised with ones.</p> <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// Instantiate matrices</span>
+<span class="n">Matrix</span> <span class="nf">InitMatrix</span><span class="p">(</span><span class="kt">int</span> <span class="n">rows</span><span class="p">,</span> <span class="kt">int</span> <span class="n">cols</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">Matrix</span> <span class="n">matrix</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">cols</span><span class="p">);</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">rows</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="n">cols</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">matrix</span><span class="p">.</span><span class="n">set</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+        <span class="p">}</span>
+        
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">matrix</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div> <p>In the main we define the dimensions of the matrices and instantiate them. Then, we start the timer, to measure the time of the computation. This is useful to check the speedup of the parallel implementation. After the computation, we stop the timer and print the result and the time.</p> <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// Main function</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="c1">// Matrix dimensions</span>
+    <span class="kt">int</span> <span class="n">rowsA</span> <span class="o">=</span> <span class="mi">10</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">colsA</span> <span class="o">=</span> <span class="mi">10</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">rowsB</span> <span class="o">=</span> <span class="n">colsA</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">colsB</span> <span class="o">=</span> <span class="mi">10</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">rowsC</span> <span class="o">=</span> <span class="n">rowsA</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">colsC</span> <span class="o">=</span> <span class="n">colsB</span><span class="p">;</span>
+
+    <span class="c1">// Instantiate matrices</span>
+    <span class="n">Matrix</span> <span class="n">A</span> <span class="o">=</span> <span class="n">InitMatrix</span><span class="p">(</span><span class="n">rowsA</span><span class="p">,</span> <span class="n">colsA</span><span class="p">);</span>
+    <span class="n">Matrix</span> <span class="n">B</span> <span class="o">=</span> <span class="n">InitMatrix</span><span class="p">(</span><span class="n">rowsB</span><span class="p">,</span> <span class="n">colsB</span><span class="p">);</span>
+    <span class="n">Matrix</span> <span class="n">C</span> <span class="o">=</span> <span class="n">Matrix</span><span class="p">(</span><span class="n">rowsC</span><span class="p">,</span> <span class="n">colsC</span><span class="p">);</span>
+    
+    <span class="c1">// Start timer</span>
+    <span class="k">auto</span> <span class="n">start</span> <span class="o">=</span> <span class="n">chrono</span><span class="o">::</span><span class="n">high_resolution_clock</span><span class="o">::</span><span class="n">now</span><span class="p">();</span>
+
+    <span class="c1">// Multiply matrices</span>
+    <span class="n">multiply</span><span class="p">(</span><span class="o">&amp;</span><span class="n">A</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">B</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">C</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">rowsC</span><span class="p">);</span>
+
+    <span class="c1">// Stop timer</span>
+    <span class="k">auto</span> <span class="n">stop</span> <span class="o">=</span> <span class="n">chrono</span><span class="o">::</span><span class="n">high_resolution_clock</span><span class="o">::</span><span class="n">now</span><span class="p">();</span>
+    <span class="k">auto</span> <span class="n">duration</span> <span class="o">=</span> <span class="n">chrono</span><span class="o">::</span><span class="n">duration_cast</span><span class="o">&lt;</span><span class="n">chrono</span><span class="o">::</span><span class="n">microseconds</span><span class="o">&gt;</span><span class="p">(</span><span class="n">stop</span> <span class="o">-</span> <span class="n">start</span><span class="p">);</span>
+
+    <span class="c1">// Print result</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="s">"Result:"</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">C</span><span class="p">.</span><span class="n">print</span><span class="p">();</span>
+
+    <span class="c1">// Print time</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="s">"Time: "</span> <span class="o">&lt;&lt;</span> <span class="n">duration</span><span class="p">.</span><span class="n">count</span><span class="p">()</span> <span class="o">&lt;&lt;</span> <span class="s">" microseconds"</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="p">}</span>
+</code></pre></div></div> <p>Here is the output of the program:</p> <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>rick@book:~/Desktop/MatMul#~ g++ <span class="nt">-std</span><span class="o">=</span>c++11 <span class="nt">-o</span> main main.cpp <span class="o">&amp;&amp;</span> ./main
+Result:
+10 10 10 10 10 10 10 10 10 10 
+10 10 10 10 10 10 10 10 10 10 
+10 10 10 10 10 10 10 10 10 10 
+10 10 10 10 10 10 10 10 10 10 
+10 10 10 10 10 10 10 10 10 10 
+10 10 10 10 10 10 10 10 10 10 
+10 10 10 10 10 10 10 10 10 10 
+10 10 10 10 10 10 10 10 10 10 
+10 10 10 10 10 10 10 10 10 10 
+10 10 10 10 10 10 10 10 10 10 
+Time: 12 microseconds
+</code></pre></div></div> <p>Brief recap of the code:</p> <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="cp">#include</span> <span class="cpf">&lt;iostream&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;vector&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;thread&gt;</span><span class="cp">
+#include</span> <span class="cpf">&lt;chrono&gt;</span><span class="cp">
+</span>
+<span class="k">using</span> <span class="k">namespace</span> <span class="n">std</span><span class="p">;</span>
+
+<span class="c1">// Matrix class</span>
+<span class="k">class</span> <span class="nc">Matrix</span> <span class="p">{</span>
+    <span class="nl">private:</span>
+        <span class="kt">int</span> <span class="n">rows</span><span class="p">;</span>
+        <span class="kt">int</span> <span class="n">cols</span><span class="p">;</span>
+        <span class="n">vector</span><span class="o">&lt;</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&gt;</span> <span class="n">matrix</span><span class="p">;</span>
+    <span class="nl">public:</span>
+        <span class="n">Matrix</span><span class="p">(</span><span class="kt">int</span> <span class="n">rows</span><span class="p">,</span> <span class="kt">int</span> <span class="n">cols</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">this</span><span class="o">-&gt;</span><span class="n">rows</span> <span class="o">=</span> <span class="n">rows</span><span class="p">;</span>
+            <span class="k">this</span><span class="o">-&gt;</span><span class="n">cols</span> <span class="o">=</span> <span class="n">cols</span><span class="p">;</span>
+            <span class="k">this</span><span class="o">-&gt;</span><span class="n">matrix</span> <span class="o">=</span> <span class="n">vector</span><span class="o">&lt;</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;&gt;</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span><span class="n">cols</span><span class="p">,</span> <span class="mi">0</span><span class="p">));</span>
+        <span class="p">}</span>
+        <span class="kt">void</span> <span class="nf">set</span><span class="p">(</span><span class="kt">int</span> <span class="n">row</span><span class="p">,</span> <span class="kt">int</span> <span class="n">col</span><span class="p">,</span> <span class="kt">int</span> <span class="n">value</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">this</span><span class="o">-&gt;</span><span class="n">matrix</span><span class="p">[</span><span class="n">row</span><span class="p">][</span><span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="kt">int</span> <span class="nf">get</span><span class="p">(</span><span class="kt">int</span> <span class="n">row</span><span class="p">,</span> <span class="kt">int</span> <span class="n">col</span><span class="p">)</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">matrix</span><span class="p">[</span><span class="n">row</span><span class="p">][</span><span class="n">col</span><span class="p">];</span>
+        <span class="p">}</span>
+        <span class="kt">int</span> <span class="nf">getRows</span><span class="p">()</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">rows</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="kt">int</span> <span class="nf">getCols</span><span class="p">()</span> <span class="p">{</span>
+            <span class="k">return</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">cols</span><span class="p">;</span>
+        <span class="p">}</span>
+        <span class="kt">void</span> <span class="nf">print</span><span class="p">()</span> <span class="p">{</span>
+            <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">rows</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">cols</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="k">this</span><span class="o">-&gt;</span><span class="n">matrix</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="s">" "</span><span class="p">;</span>
+                <span class="p">}</span>
+                <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="n">endl</span><span class="p">;</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+<span class="p">};</span>
+
+
+<span class="c1">// Matrix multiplication</span>
+<span class="kt">void</span> <span class="nf">multiply</span><span class="p">(</span><span class="n">Matrix</span> <span class="o">*</span><span class="n">A</span><span class="p">,</span> <span class="n">Matrix</span> <span class="o">*</span><span class="n">B</span><span class="p">,</span> <span class="n">Matrix</span> <span class="o">*</span><span class="n">C</span><span class="p">,</span> <span class="kt">int</span> <span class="n">start</span><span class="p">,</span> <span class="kt">int</span> <span class="n">end</span><span class="p">)</span> <span class="p">{</span>
+    <span class="kt">int</span> <span class="n">rows</span> <span class="o">=</span> <span class="n">A</span><span class="o">-&gt;</span><span class="n">getRows</span><span class="p">();</span>
+    <span class="kt">int</span> <span class="n">cols</span> <span class="o">=</span> <span class="n">B</span><span class="o">-&gt;</span><span class="n">getCols</span><span class="p">();</span>
+    <span class="kt">int</span> <span class="n">k</span> <span class="o">=</span> <span class="n">A</span><span class="o">-&gt;</span><span class="n">getCols</span><span class="p">();</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="n">start</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">end</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="n">cols</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="kt">int</span> <span class="n">sum</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+            <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">l</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">l</span> <span class="o">&lt;</span> <span class="n">k</span><span class="p">;</span> <span class="n">l</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+                <span class="n">sum</span> <span class="o">+=</span> <span class="n">A</span><span class="o">-&gt;</span><span class="n">get</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">l</span><span class="p">)</span> <span class="o">*</span> <span class="n">B</span><span class="o">-&gt;</span><span class="n">get</span><span class="p">(</span><span class="n">l</span><span class="p">,</span> <span class="n">j</span><span class="p">);</span>
+            <span class="p">}</span>
+            <span class="n">C</span><span class="o">-&gt;</span><span class="n">set</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="n">sum</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// Instantiate matrices</span>
+<span class="n">Matrix</span> <span class="nf">InitMatrix</span><span class="p">(</span><span class="kt">int</span> <span class="n">rows</span><span class="p">,</span> <span class="kt">int</span> <span class="n">cols</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">Matrix</span> <span class="n">matrix</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">cols</span><span class="p">);</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">rows</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="n">cols</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">matrix</span><span class="p">.</span><span class="n">set</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+        <span class="p">}</span>
+        
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">matrix</span><span class="p">;</span>
+<span class="p">}</span>
+
+
+<span class="c1">// Main function</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+    <span class="c1">// Matrix dimensions</span>
+    <span class="kt">int</span> <span class="n">rowsA</span> <span class="o">=</span> <span class="mi">10</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">colsA</span> <span class="o">=</span> <span class="mi">10</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">rowsB</span> <span class="o">=</span> <span class="n">colsA</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">colsB</span> <span class="o">=</span> <span class="mi">10</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">rowsC</span> <span class="o">=</span> <span class="n">rowsA</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">colsC</span> <span class="o">=</span> <span class="n">colsB</span><span class="p">;</span>
+
+    <span class="c1">// Instantiate matrices</span>
+    <span class="n">Matrix</span> <span class="n">A</span> <span class="o">=</span> <span class="n">InitMatrix</span><span class="p">(</span><span class="n">rowsA</span><span class="p">,</span> <span class="n">colsA</span><span class="p">);</span>
+    <span class="n">Matrix</span> <span class="n">B</span> <span class="o">=</span> <span class="n">InitMatrix</span><span class="p">(</span><span class="n">rowsB</span><span class="p">,</span> <span class="n">colsB</span><span class="p">);</span>
+    <span class="n">Matrix</span> <span class="n">C</span> <span class="o">=</span> <span class="n">Matrix</span><span class="p">(</span><span class="n">rowsC</span><span class="p">,</span> <span class="n">colsC</span><span class="p">);</span>
+    
+    <span class="c1">// Start timer</span>
+    <span class="k">auto</span> <span class="n">start</span> <span class="o">=</span> <span class="n">chrono</span><span class="o">::</span><span class="n">high_resolution_clock</span><span class="o">::</span><span class="n">now</span><span class="p">();</span>
+
+    <span class="c1">// Multiply matrices</span>
+    <span class="n">multiply</span><span class="p">(</span><span class="o">&amp;</span><span class="n">A</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">B</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">C</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">rowsC</span><span class="p">);</span>
+
+    <span class="c1">// Stop timer</span>
+    <span class="k">auto</span> <span class="n">stop</span> <span class="o">=</span> <span class="n">chrono</span><span class="o">::</span><span class="n">high_resolution_clock</span><span class="o">::</span><span class="n">now</span><span class="p">();</span>
+    <span class="k">auto</span> <span class="n">duration</span> <span class="o">=</span> <span class="n">chrono</span><span class="o">::</span><span class="n">duration_cast</span><span class="o">&lt;</span><span class="n">chrono</span><span class="o">::</span><span class="n">microseconds</span><span class="o">&gt;</span><span class="p">(</span><span class="n">stop</span> <span class="o">-</span> <span class="n">start</span><span class="p">);</span>
+
+    <span class="c1">// Print result</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="s">"Result:"</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+    <span class="n">C</span><span class="p">.</span><span class="n">print</span><span class="p">();</span>
+
+    <span class="c1">// Print time</span>
+    <span class="n">std</span><span class="o">::</span><span class="n">cout</span> <span class="o">&lt;&lt;</span> <span class="s">"Time: "</span> <span class="o">&lt;&lt;</span> <span class="n">duration</span><span class="p">.</span><span class="n">count</span><span class="p">()</span> <span class="o">&lt;&lt;</span> <span class="s">" microseconds"</span> <span class="o">&lt;&lt;</span> <span class="n">std</span><span class="o">::</span><span class="n">endl</span><span class="p">;</span>
+
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="p">}</span>
+</code></pre></div></div> <h4 id="cuda-implementation">CUDA implementation</h4> <p>Now we take a look at the CUDA implementation. First, we need to import the CUDA libraries. The following code is the same as the C++ implementation, but we need to add the CUDA libraries.</p> <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// import cuda</span>
+<span class="cp">#import&lt;cuda.h&gt;
+#import&lt;cuda_runtime.h&gt;
+#import&lt;cuda_runtime_api.h&gt;
+</span>
+<span class="c1">// import stdio</span>
+<span class="cp">#import&lt;stdio.h&gt;
+</span></code></pre></div></div> <p>Then, we define the matrix multiplication kernel. The kernel takes as input three matrices, the first two are the matrices to multiply and the third is the matrix the resulting matrix after the multiplication. The kernel iterates over the rows of the first matrix and the columns of the second matrix and computes the value of the element of the result matrix.</p> <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// calculate row and column index of element</span>
+<span class="kt">int</span> <span class="n">row</span> <span class="o">=</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">y</span> <span class="o">*</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">y</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">;</span>
+<span class="kt">int</span> <span class="n">col</span> <span class="o">=</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+</code></pre></div></div> <p>Specifically, at the real beginning of the kernel, we calculate the row and column index of the element. The row index is calculated by multiplying the block index in the y by the block dimension and adding the thread index in the y. Also, the column index is computed in the same way in the x dimension. This allows us to split the work and assign it to different threads, eventually, in different blocks.</p> <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// matrix multiplication kernel called by MatMul()</span>
+<span class="n">__global__</span> <span class="kt">void</span> <span class="nf">MatMulKernel</span><span class="p">(</span><span class="kt">float</span><span class="o">*</span> <span class="n">A</span><span class="p">,</span> <span class="kt">float</span><span class="o">*</span> <span class="n">B</span><span class="p">,</span> <span class="kt">float</span><span class="o">*</span> <span class="n">C</span><span class="p">,</span> <span class="kt">int</span> <span class="n">N</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="c1">// calculate row and column index of element</span>
+    <span class="kt">int</span> <span class="n">row</span> <span class="o">=</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">y</span> <span class="o">*</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">y</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">col</span> <span class="o">=</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+
+    <span class="c1">// calculate element value</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">row</span> <span class="o">&lt;</span> <span class="n">N</span> <span class="o">&amp;&amp;</span> <span class="n">col</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="kt">float</span> <span class="n">sum</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="n">sum</span> <span class="o">+=</span> <span class="n">A</span><span class="p">[</span><span class="n">row</span> <span class="o">*</span> <span class="n">N</span> <span class="o">+</span> <span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="n">B</span><span class="p">[</span><span class="n">i</span> <span class="o">*</span> <span class="n">N</span> <span class="o">+</span> <span class="n">col</span><span class="p">];</span>
+        <span class="p">}</span>
+        <span class="n">C</span><span class="p">[</span><span class="n">row</span> <span class="o">*</span> <span class="n">N</span> <span class="o">+</span> <span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">sum</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div> <p>The following function is used to call the kernel. The function allocates the memory on the device, copies the data from the host to the device, launches the kernel, copies the data from the device to the host and frees the memory on the device.</p> <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="kt">void</span> <span class="nf">MatMul</span><span class="p">(</span><span class="kt">float</span><span class="o">*</span> <span class="n">A</span><span class="p">,</span> <span class="kt">float</span><span class="o">*</span> <span class="n">B</span><span class="p">,</span> <span class="kt">float</span><span class="o">*</span> <span class="n">C</span><span class="p">,</span> <span class="kt">int</span> <span class="n">N</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="c1">// declare device memory pointers</span>
+    <span class="kt">float</span><span class="o">*</span> <span class="n">d_A</span><span class="p">;</span>
+    <span class="kt">float</span><span class="o">*</span> <span class="n">d_B</span><span class="p">;</span>
+    <span class="kt">float</span><span class="o">*</span> <span class="n">d_C</span><span class="p">;</span>
+
+    <span class="c1">// allocate device memory</span>
+    <span class="n">cudaMalloc</span><span class="p">((</span><span class="kt">void</span><span class="o">**</span><span class="p">)</span><span class="o">&amp;</span><span class="n">d_A</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">));</span>
+    <span class="n">cudaMalloc</span><span class="p">((</span><span class="kt">void</span><span class="o">**</span><span class="p">)</span><span class="o">&amp;</span><span class="n">d_B</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">));</span>
+    <span class="n">cudaMalloc</span><span class="p">((</span><span class="kt">void</span><span class="o">**</span><span class="p">)</span><span class="o">&amp;</span><span class="n">d_C</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">));</span>
+
+    <span class="c1">// copy data from host to device</span>
+    <span class="n">cudaMemcpy</span><span class="p">(</span><span class="n">d_A</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">),</span> <span class="n">cudaMemcpyHostToDevice</span><span class="p">);</span>
+    <span class="n">cudaMemcpy</span><span class="p">(</span><span class="n">d_B</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">),</span> <span class="n">cudaMemcpyHostToDevice</span><span class="p">);</span>
+
+    <span class="c1">// define block and grid dimensions</span>
+    <span class="n">dim3</span> <span class="n">dimBlock</span><span class="p">(</span><span class="mi">16</span><span class="p">,</span> <span class="mi">16</span><span class="p">);</span>
+    <span class="n">dim3</span> <span class="n">dimGrid</span><span class="p">((</span><span class="n">N</span> <span class="o">+</span> <span class="n">dimBlock</span><span class="p">.</span><span class="n">x</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">dimBlock</span><span class="p">.</span><span class="n">x</span><span class="p">,</span> <span class="p">(</span><span class="n">N</span> <span class="o">+</span> <span class="n">dimBlock</span><span class="p">.</span><span class="n">y</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">dimBlock</span><span class="p">.</span><span class="n">y</span><span class="p">);</span>
+
+    <span class="c1">// launch kernel</span>
+    <span class="n">MatMulKernel</span><span class="o">&lt;&lt;&lt;</span><span class="n">dimGrid</span><span class="p">,</span> <span class="n">dimBlock</span><span class="o">&gt;&gt;&gt;</span><span class="p">(</span><span class="n">d_A</span><span class="p">,</span> <span class="n">d_B</span><span class="p">,</span> <span class="n">d_C</span><span class="p">,</span> <span class="n">N</span><span class="p">);</span>
+
+    <span class="c1">// copy data from device to host</span>
+    <span class="n">cudaMemcpy</span><span class="p">(</span><span class="n">C</span><span class="p">,</span> <span class="n">d_C</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">),</span> <span class="n">cudaMemcpyDeviceToHost</span><span class="p">);</span>
+
+    <span class="c1">// free device memory</span>
+    <span class="n">cudaFree</span><span class="p">(</span><span class="n">d_A</span><span class="p">);</span>
+    <span class="n">cudaFree</span><span class="p">(</span><span class="n">d_B</span><span class="p">);</span>
+    <span class="n">cudaFree</span><span class="p">(</span><span class="n">d_C</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div></div> <p>Previously, we defined a function to initialise the matrices. Now, we need to define a function to print the matrix.</p> <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// print matrix function</span>
+<span class="kt">void</span> <span class="nf">printMatrix</span><span class="p">(</span><span class="kt">float</span><span class="o">*</span> <span class="n">A</span><span class="p">,</span> <span class="kt">int</span> <span class="n">N</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"%f "</span><span class="p">,</span> <span class="n">A</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+        <span class="k">if</span> <span class="p">((</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="n">N</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="n">printf</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div> <p>The main function is the same as the C++ implementation, but we initialise the matrix as a single array of floats. This is because CUDA does not support vectors of vectors.</p> <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// main function</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(){</span>
+    <span class="c1">// define matrix size</span>
+    <span class="kt">int</span> <span class="n">N</span> <span class="o">=</span> <span class="mi">10</span><span class="p">;</span>
+
+    <span class="c1">// declare and allocate host memory</span>
+    <span class="kt">float</span><span class="o">*</span> <span class="n">A</span> <span class="o">=</span> <span class="p">(</span><span class="kt">float</span><span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">));</span>
+    <span class="kt">float</span><span class="o">*</span> <span class="n">B</span> <span class="o">=</span> <span class="p">(</span><span class="kt">float</span><span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">));</span>
+    <span class="kt">float</span><span class="o">*</span> <span class="n">C</span> <span class="o">=</span> <span class="p">(</span><span class="kt">float</span><span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">));</span>
+
+    <span class="c1">// initialize host memory</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">A</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">;</span>
+        <span class="n">B</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">;</span>
+        <span class="n">C</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="c1">// call matrix multiplication function</span>
+    <span class="n">MatMul</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="n">C</span><span class="p">,</span> <span class="n">N</span><span class="p">);</span>
+
+    <span class="c1">// print matrix</span>
+    <span class="n">printMatrix</span><span class="p">(</span><span class="n">C</span><span class="p">,</span> <span class="n">N</span><span class="p">);</span>
+
+    <span class="c1">// free host memory</span>
+    <span class="n">free</span><span class="p">(</span><span class="n">A</span><span class="p">);</span>
+    <span class="n">free</span><span class="p">(</span><span class="n">B</span><span class="p">);</span>
+    <span class="n">free</span><span class="p">(</span><span class="n">C</span><span class="p">);</span>
+
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div> <p>Here is the output:</p> <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>10 10 10 10 10 10 10 10 10 10
+10 10 10 10 10 10 10 10 10 10
+10 10 10 10 10 10 10 10 10 10
+10 10 10 10 10 10 10 10 10 10
+10 10 10 10 10 10 10 10 10 10
+10 10 10 10 10 10 10 10 10 10
+10 10 10 10 10 10 10 10 10 10
+10 10 10 10 10 10 10 10 10 10
+10 10 10 10 10 10 10 10 10 10
+10 10 10 10 10 10 10 10 10 10
+CPU <span class="nb">times</span>: user 24.9 ms, sys: 5.85 ms, total: 30.7 ms
+Wall <span class="nb">time</span>: 31.1 ms
+</code></pre></div></div> <p>To recap:</p> <div class="language-c++ highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// how to run the code </span>
+<span class="c1">// load the file.cu on colab </span>
+<span class="c1">// then, to run the code, type and run in a jupyter cell </span>
+<span class="c1">// the following command:</span>
+<span class="c1">// !nvcc file.cu -o file &amp;&amp; ./file</span>
+
+<span class="c1">// import cuda</span>
+<span class="cp">#import&lt;cuda.h&gt;
+#import&lt;cuda_runtime.h&gt;
+#import&lt;cuda_runtime_api.h&gt;
+</span>
+<span class="c1">// import stdio</span>
+<span class="cp">#import&lt;stdio.h&gt;
+</span>
+
+<span class="c1">// matrix multiplication kernel called by MatMul()</span>
+<span class="n">__global__</span> <span class="kt">void</span> <span class="nf">MatMulKernel</span><span class="p">(</span><span class="kt">float</span><span class="o">*</span> <span class="n">A</span><span class="p">,</span> <span class="kt">float</span><span class="o">*</span> <span class="n">B</span><span class="p">,</span> <span class="kt">float</span><span class="o">*</span> <span class="n">C</span><span class="p">,</span> <span class="kt">int</span> <span class="n">N</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="c1">// calculate row and column index of element</span>
+    <span class="kt">int</span> <span class="n">row</span> <span class="o">=</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">y</span> <span class="o">*</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">y</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">y</span><span class="p">;</span>
+    <span class="kt">int</span> <span class="n">col</span> <span class="o">=</span> <span class="n">blockIdx</span><span class="p">.</span><span class="n">x</span> <span class="o">*</span> <span class="n">blockDim</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">threadIdx</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+
+    <span class="c1">// calculate element value</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">row</span> <span class="o">&lt;</span> <span class="n">N</span> <span class="o">&amp;&amp;</span> <span class="n">col</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="kt">float</span> <span class="n">sum</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="n">sum</span> <span class="o">+=</span> <span class="n">A</span><span class="p">[</span><span class="n">row</span> <span class="o">*</span> <span class="n">N</span> <span class="o">+</span> <span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="n">B</span><span class="p">[</span><span class="n">i</span> <span class="o">*</span> <span class="n">N</span> <span class="o">+</span> <span class="n">col</span><span class="p">];</span>
+        <span class="p">}</span>
+        <span class="n">C</span><span class="p">[</span><span class="n">row</span> <span class="o">*</span> <span class="n">N</span> <span class="o">+</span> <span class="n">col</span><span class="p">]</span> <span class="o">=</span> <span class="n">sum</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// matrix multiplication function called by main()</span>
+<span class="kt">void</span> <span class="nf">MatMul</span><span class="p">(</span><span class="kt">float</span><span class="o">*</span> <span class="n">A</span><span class="p">,</span> <span class="kt">float</span><span class="o">*</span> <span class="n">B</span><span class="p">,</span> <span class="kt">float</span><span class="o">*</span> <span class="n">C</span><span class="p">,</span> <span class="kt">int</span> <span class="n">N</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="c1">// declare device memory pointers</span>
+    <span class="kt">float</span><span class="o">*</span> <span class="n">d_A</span><span class="p">;</span>
+    <span class="kt">float</span><span class="o">*</span> <span class="n">d_B</span><span class="p">;</span>
+    <span class="kt">float</span><span class="o">*</span> <span class="n">d_C</span><span class="p">;</span>
+
+    <span class="c1">// allocate device memory</span>
+    <span class="n">cudaMalloc</span><span class="p">((</span><span class="kt">void</span><span class="o">**</span><span class="p">)</span><span class="o">&amp;</span><span class="n">d_A</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">));</span>
+    <span class="n">cudaMalloc</span><span class="p">((</span><span class="kt">void</span><span class="o">**</span><span class="p">)</span><span class="o">&amp;</span><span class="n">d_B</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">));</span>
+    <span class="n">cudaMalloc</span><span class="p">((</span><span class="kt">void</span><span class="o">**</span><span class="p">)</span><span class="o">&amp;</span><span class="n">d_C</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">));</span>
+
+    <span class="c1">// copy data from host to device</span>
+    <span class="n">cudaMemcpy</span><span class="p">(</span><span class="n">d_A</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">),</span> <span class="n">cudaMemcpyHostToDevice</span><span class="p">);</span>
+    <span class="n">cudaMemcpy</span><span class="p">(</span><span class="n">d_B</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">),</span> <span class="n">cudaMemcpyHostToDevice</span><span class="p">);</span>
+
+    <span class="c1">// define block and grid dimensions</span>
+    <span class="n">dim3</span> <span class="n">dimBlock</span><span class="p">(</span><span class="mi">16</span><span class="p">,</span> <span class="mi">16</span><span class="p">);</span>
+    <span class="n">dim3</span> <span class="n">dimGrid</span><span class="p">((</span><span class="n">N</span> <span class="o">+</span> <span class="n">dimBlock</span><span class="p">.</span><span class="n">x</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">dimBlock</span><span class="p">.</span><span class="n">x</span><span class="p">,</span> <span class="p">(</span><span class="n">N</span> <span class="o">+</span> <span class="n">dimBlock</span><span class="p">.</span><span class="n">y</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="n">dimBlock</span><span class="p">.</span><span class="n">y</span><span class="p">);</span>
+
+    <span class="c1">// launch kernel</span>
+    <span class="n">MatMulKernel</span><span class="o">&lt;&lt;&lt;</span><span class="n">dimGrid</span><span class="p">,</span> <span class="n">dimBlock</span><span class="o">&gt;&gt;&gt;</span><span class="p">(</span><span class="n">d_A</span><span class="p">,</span> <span class="n">d_B</span><span class="p">,</span> <span class="n">d_C</span><span class="p">,</span> <span class="n">N</span><span class="p">);</span>
+
+    <span class="c1">// copy data from device to host</span>
+    <span class="n">cudaMemcpy</span><span class="p">(</span><span class="n">C</span><span class="p">,</span> <span class="n">d_C</span><span class="p">,</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">),</span> <span class="n">cudaMemcpyDeviceToHost</span><span class="p">);</span>
+
+    <span class="c1">// free device memory</span>
+    <span class="n">cudaFree</span><span class="p">(</span><span class="n">d_A</span><span class="p">);</span>
+    <span class="n">cudaFree</span><span class="p">(</span><span class="n">d_B</span><span class="p">);</span>
+    <span class="n">cudaFree</span><span class="p">(</span><span class="n">d_C</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// print matrix function</span>
+<span class="kt">void</span> <span class="nf">printMatrix</span><span class="p">(</span><span class="kt">float</span><span class="o">*</span> <span class="n">A</span><span class="p">,</span> <span class="kt">int</span> <span class="n">N</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"%f "</span><span class="p">,</span> <span class="n">A</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span>
+        <span class="k">if</span> <span class="p">((</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="n">N</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="n">printf</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// main function</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(){</span>
+    <span class="c1">// define matrix size</span>
+    <span class="kt">int</span> <span class="n">N</span> <span class="o">=</span> <span class="mi">10</span><span class="p">;</span>
+
+    <span class="c1">// declare and allocate host memory</span>
+    <span class="kt">float</span><span class="o">*</span> <span class="n">A</span> <span class="o">=</span> <span class="p">(</span><span class="kt">float</span><span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">));</span>
+    <span class="kt">float</span><span class="o">*</span> <span class="n">B</span> <span class="o">=</span> <span class="p">(</span><span class="kt">float</span><span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">));</span>
+    <span class="kt">float</span><span class="o">*</span> <span class="n">C</span> <span class="o">=</span> <span class="p">(</span><span class="kt">float</span><span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="n">N</span> <span class="o">*</span> <span class="n">N</span> <span class="o">*</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">));</span>
+
+    <span class="c1">// initialize host memory</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">int</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">N</span> <span class="o">*</span> <span class="n">N</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">A</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">;</span>
+        <span class="n">B</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">;</span>
+        <span class="n">C</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="c1">// call matrix multiplication function</span>
+    <span class="n">MatMul</span><span class="p">(</span><span class="n">A</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="n">C</span><span class="p">,</span> <span class="n">N</span><span class="p">);</span>
+
+    <span class="c1">// print matrix</span>
+    <span class="n">printMatrix</span><span class="p">(</span><span class="n">C</span><span class="p">,</span> <span class="n">N</span><span class="p">);</span>
+
+    <span class="c1">// free host memory</span>
+    <span class="n">free</span><span class="p">(</span><span class="n">A</span><span class="p">);</span>
+    <span class="n">free</span><span class="p">(</span><span class="n">B</span><span class="p">);</span>
+    <span class="n">free</span><span class="p">(</span><span class="n">C</span><span class="p">);</span>
+
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div></div> <h4 id="speedup">Speedup</h4> <p>The speedup is the ratio between the time of the sequential implementation and the time of the parallel implementation is not significant on small matrices. However, on large matrices, the speedup is significant. Here is the output of the program on a 1000x1000 matrix and a 10000x10000 matrix.</p> <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>//// MATRIX 1000x1000 
+
+// Sequential implementation
+Result:
+Time: 9,57 s
+
+// CUDA implementation on T4 GPU
+CPU <span class="nb">times</span>: user 18.6 ms, sys: 5.12 ms, total: 23.7 ms
+Wall <span class="nb">time</span>: 2.11 s
+</code></pre></div></div> <div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>//// MATRIX 10000x10000 
+
+// Sequential implementation
+Result:
+Time: 16 min
+
+// CUDA implementation on T4 GPU
+CPU <span class="nb">times</span>: user 55.9 ms, sys: 7.25 ms, total: 63.2 ms
+Wall <span class="nb">time</span>: 8.94 s
+</code></pre></div></div>]]></content><author><name></name></author><category term="programming"/><category term="C++"/><category term="CUDA"/><category term="matrix-multiplication"/><category term="parallel-computing"/><category term="GPU"/><summary type="html"><![CDATA[an example of matrix multiplication in C++ and CUDA]]></summary></entry></feed>
