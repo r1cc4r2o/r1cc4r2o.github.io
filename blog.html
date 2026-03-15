@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blog – Riccardo Tedoldi</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* ── Blog-specific styles ── */
+    .blog-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+    .blog-header a {
+      font-size: 0.9rem;
+      text-decoration: none;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 4px 10px;
+      color: inherit;
+      transition: border-color 0.2s;
+    }
+    .blog-header a:hover { border-color: #888; }
+    body.dark .blog-header a { border-color: #444; }
+
+    .blog-header h1 {
+      margin: 0;
+      font-size: 1.7rem;
+    }
+
+    /* ── Post list ── */
+    #post-list { list-style: none; padding: 0; margin: 0; }
+    #post-list li {
+      border-bottom: 1px solid #eee;
+      padding: 14px 0;
+    }
+    body.dark #post-list li { border-bottom-color: #30363d; }
+    #post-list li:last-child { border-bottom: none; }
+
+    .post-link {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .post-link .post-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #0366d6;
+    }
+    body.dark .post-link .post-title { color: #58a6ff; }
+    .post-link .post-meta {
+      font-size: 0.82rem;
+      color: #666;
+    }
+    body.dark .post-link .post-meta { color: #8b949e; }
+    .post-link .post-excerpt {
+      font-size: 0.9rem;
+      color: #444;
+      margin: 0;
+    }
+    body.dark .post-link .post-excerpt { color: #c9d1d9; }
+
+    /* ── Single post view ── */
+    #post-view { display: none; }
+    #post-view.visible { display: block; }
+
+    #post-view-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    #back-to-list {
+      background: none;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 4px 10px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      color: inherit;
+      transition: border-color 0.2s;
+    }
+    #back-to-list:hover { border-color: #888; }
+    body.dark #back-to-list { border-color: #444; color: #e6edf3; }
+
+    #post-view-title {
+      margin: 0;
+      font-size: 1.5rem;
+    }
+    #post-view-meta {
+      font-size: 0.82rem;
+      color: #666;
+      margin-bottom: 24px;
+    }
+    body.dark #post-view-meta { color: #8b949e; }
+
+    /* Markdown content styling */
+    #post-content h1, #post-content h2, #post-content h3 {
+      margin-top: 1.5em;
+    }
+    #post-content h2 {
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 6px;
+    }
+    body.dark #post-content h2 { border-bottom-color: #30363d; }
+    #post-content pre {
+      background: #f5f5f5;
+      border-radius: 6px;
+      padding: 12px 16px;
+      overflow-x: auto;
+      font-size: 0.88rem;
+    }
+    body.dark #post-content pre { background: #161b22; }
+    #post-content code {
+      background: #f0f0f0;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 0.88em;
+    }
+    body.dark #post-content code { background: #1c2128; }
+    #post-content pre code { background: none; padding: 0; }
+    #post-content blockquote {
+      border-left: 4px solid #0366d6;
+      margin: 0;
+      padding: 4px 16px;
+      color: #555;
+    }
+    body.dark #post-content blockquote { color: #8b949e; border-left-color: #58a6ff; }
+    #post-content img { max-width: 100%; border-radius: 6px; }
+
+
+  </style>
+</head>
+<body>
+
+<button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
+
+<div class="container">
+
+  <!-- Blog header with back-to-home link -->
+  <div class="blog-header">
+    <a href="index.html">← Home</a>
+    <h1>📝 Blog</h1>
+  </div>
+
+  <!-- Post list view -->
+  <div id="list-view">
+    <ul id="post-list"></ul>
+  </div>
+
+  <!-- Single post view -->
+  <div id="post-view">
+    <div id="post-view-header">
+      <button id="back-to-list">← All posts</button>
+      <h2 id="post-view-title"></h2>
+    </div>
+    <p id="post-view-meta"></p>
+    <div id="post-content"></div>
+  </div>
+
+</div>
+
+<script id="post-hello-world" type="text/markdown">
+# Hello, World!
+
+Welcome to my blog! Stay tuned for future posts. 🚀
+
+</script>
+
+
+<script>
+  // ── Theme toggle ──────────────────────────────────────
+  const btn = document.getElementById('theme-toggle');
+  const saved = localStorage.getItem('theme');
+  if (saved === 'dark') {
+    document.body.classList.add('dark');
+    btn.textContent = '☀️';
+  }
+  btn.addEventListener('click', () => {
+    document.body.classList.toggle('dark');
+    const isDark = document.body.classList.contains('dark');
+    btn.textContent = isDark ? '☀️' : '🌙';
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  });
+
+  // ════════════════════════════════════════════════════════
+  // ▼▼▼  POSTS INDEX — add a matching entry for each post  ▼▼▼
+  // ════════════════════════════════════════════════════════
+  const POSTS = [
+    {
+      id:      'post-hello-world',
+      title:   'Hello, World!',
+      date:    '2026-03-08',
+      excerpt: 'Welcome!'
+    },
+    // {
+    //   id:      'post-my-next-post',
+    //   title:   'My Next Post',
+    //   date:    '2026-04-01',
+    //   excerpt: 'A short description of what this post is about.'
+    // },
+  ];
+  // ════════════════════════════════════════════════════════
+
+  const listEl   = document.getElementById('post-list');
+  const listView = document.getElementById('list-view');
+  const postView = document.getElementById('post-view');
+
+  function formatDate(iso) {
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  // ── Render post list ──────────────────────────────────
+  function renderList() {
+    listEl.innerHTML = '';
+    if (POSTS.length === 0) {
+      listEl.innerHTML = '<li><em>No posts yet — add one above!</em></li>';
+      return;
+    }
+    const sorted = [...POSTS].sort((a, b) => b.date.localeCompare(a.date));
+    sorted.forEach((p, i) => {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <a class="post-link" href="#">
+          <span class="post-title">${p.title}</span>
+          <span class="post-meta">${formatDate(p.date)}</span>
+          <span class="post-excerpt">${p.excerpt}</span>
+        </a>`;
+      li.querySelector('a').addEventListener('click', e => {
+        e.preventDefault();
+        openPost(POSTS.indexOf(p));
+      });
+      listEl.appendChild(li);
+    });
+  }
+
+  // ── Open a single post (reads inline <script type="text/markdown">) ──
+  function openPost(index) {
+    const p = POSTS[index];
+    const mdEl = document.getElementById(p.id);
+    const md = mdEl ? mdEl.textContent : '*Post content not found.*';
+
+    document.getElementById('post-view-title').textContent = p.title;
+    document.getElementById('post-view-meta').textContent  = formatDate(p.date);
+    document.getElementById('post-content').innerHTML      = marked.parse(md);
+
+    listView.style.display = 'none';
+    postView.classList.add('visible');
+    window.scrollTo(0, 0);
+    history.pushState({ post: index }, '', `#post-${index}`);
+  }
+
+  function showList() {
+    postView.classList.remove('visible');
+    listView.style.display = '';
+    history.pushState({}, '', window.location.pathname);
+    window.scrollTo(0, 0);
+  }
+
+  document.getElementById('back-to-list').addEventListener('click', showList);
+  window.addEventListener('popstate', e => {
+    if (e.state && e.state.post !== undefined) openPost(e.state.post);
+    else showList();
+  });
+
+  function checkHash() {
+    const m = location.hash.match(/^#post-(\d+)$/);
+    if (m) openPost(parseInt(m[1]));
+  }
+
+  renderList();
+  checkHash();
+</script>
+
+<!-- marked.js — Markdown → HTML (works offline after first load via cache) -->
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+
+</body>
+</html>

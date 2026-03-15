@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gallery – Riccardo Tedoldi</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* ── Page layout ── */
+    .gallery-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 10px;
+    }
+    .gallery-header a.back-home {
+      font-size: 0.9rem;
+      text-decoration: none;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 4px 10px;
+      color: inherit;
+      transition: border-color 0.2s;
+      white-space: nowrap;
+    }
+    .gallery-header a.back-home:hover { border-color: #888; }
+    body.dark .gallery-header a.back-home { border-color: #444; }
+    .gallery-header h1 { margin: 0; font-size: 1.7rem; }
+
+    /* ── Category tabs ── */
+    #tab-bar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 28px;
+    }
+    .tab {
+      padding: 5px 14px;
+      border: 1px solid #ccc;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      background: none;
+      color: inherit;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .tab:hover { border-color: #888; }
+    .tab.active {
+      background: #0366d6;
+      border-color: #0366d6;
+      color: #fff;
+    }
+    body.dark .tab { border-color: #444; }
+    body.dark .tab.active { background: #58a6ff; border-color: #58a6ff; color: #0d1117; }
+
+    /* ── Masonry grid ── */
+    #gallery-grid {
+      columns: 3 220px;
+      column-gap: 14px;
+    }
+    .photo-card {
+      break-inside: avoid;
+      margin-bottom: 14px;
+      border-radius: 10px;
+      overflow: hidden;
+      cursor: pointer;
+      position: relative;
+      background: #f0f0f0;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    body.dark .photo-card { background: #161b22; }
+    .photo-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.22);
+    }
+    .photo-card img {
+      width: 100%;
+      display: block;
+      border-radius: 10px 10px 0 0;
+      object-fit: cover;
+    }
+    .photo-card .card-caption {
+      padding: 8px 12px 10px;
+      font-size: 0.82rem;
+      color: #555;
+      line-height: 1.4;
+    }
+    body.dark .photo-card .card-caption { color: #8b949e; }
+    .photo-card .card-caption strong {
+      display: block;
+      font-size: 0.88rem;
+      color: #222;
+      margin-bottom: 2px;
+    }
+    body.dark .photo-card .card-caption strong { color: #e6edf3; }
+
+    /* favourite star badge */
+    .photo-card .fav-badge {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      font-size: 1.1rem;
+      opacity: 0;
+      transition: opacity 0.2s;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+    }
+    .photo-card:hover .fav-badge { opacity: 1; }
+    .photo-card.fav .fav-badge { opacity: 1; }
+
+    /* ── Lightbox ── */
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      z-index: 1200;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      padding: 20px;
+    }
+    #lightbox.open { display: flex; }
+    #lb-img {
+      max-width: min(90vw, 900px);
+      max-height: 78vh;
+      border-radius: 10px;
+      object-fit: contain;
+      box-shadow: 0 0 80px rgba(0,0,0,0.8);
+      transition: opacity 0.2s;
+    }
+    #lb-caption {
+      color: #ddd;
+      margin-top: 14px;
+      font-size: 0.9rem;
+      text-align: center;
+      max-width: 600px;
+    }
+    #lb-caption strong { color: #fff; font-size: 1rem; display: block; margin-bottom: 2px; }
+    #lb-close {
+      position: fixed;
+      top: 16px;
+      right: 20px;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 2rem;
+      cursor: pointer;
+      line-height: 1;
+      opacity: 0.7;
+      transition: opacity 0.15s;
+    }
+    #lb-close:hover { opacity: 1; }
+    #lb-prev, #lb-next {
+      position: fixed;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255,255,255,0.12);
+      border: none;
+      color: #fff;
+      font-size: 2rem;
+      padding: 12px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #lb-prev:hover, #lb-next:hover { background: rgba(255,255,255,0.25); }
+    #lb-prev { left: 12px; }
+    #lb-next { right: 12px; }
+    #lb-counter {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.5);
+      font-size: 0.82rem;
+    }
+
+    /* empty state */
+    #empty-msg {
+      text-align: center;
+      padding: 60px 20px;
+      color: #888;
+      font-style: italic;
+      display: none;
+    }
+
+    @media (max-width: 600px) {
+      #gallery-grid { columns: 2 140px; }
+      #lb-prev, #lb-next { font-size: 1.4rem; padding: 8px 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
+
+<!-- ── Lightbox ── -->
+<div id="lightbox" role="dialog" aria-modal="true">
+  <button id="lb-close" aria-label="Close">✕</button>
+  <button id="lb-prev" aria-label="Previous">‹</button>
+  <img id="lb-img" src="" alt="" />
+  <div id="lb-caption"><strong id="lb-title"></strong><span id="lb-desc"></span></div>
+  <button id="lb-next" aria-label="Next">›</button>
+  <div id="lb-counter"></div>
+</div>
+
+<div class="container">
+
+  <div class="gallery-header">
+    <a class="back-home" href="index.html">← Home</a>
+    <h1>📷 Gallery</h1>
+  </div>
+
+  <!-- Category tabs — auto-generated from PHOTOS data -->
+  <div id="tab-bar"></div>
+
+  <div id="gallery-grid"></div>
+  <div id="empty-msg">No photos in this category yet.</div>
+
+</div>
+
+<!--
+  ════════════════════════════════════════════════════════════
+  HOW TO ADD PHOTOS — automatic parsing
+  ════════════════════════════════════════════════════════════
+
+  1. Drop your image into the photos/ folder using this naming
+     convention:
+
+       CategoryName-001.jpg   →  category "CategoryName", title "CategoryName 1"
+       Singapore-003.png      →  category "Singapore",    title "Singapore 3"
+       LabLife-012.webp       →  category "Lab Life",     title "Lab Life 12"
+
+     The part before the last hyphen+digits is the category.
+     CamelCase is split into words automatically (LabLife → Lab Life).
+
+  2. Run the build script to regenerate the PHOTOS list:
+
+       python3 build_gallery.py
+
+     That's it — gallery.html is updated automatically.
+     You never need to edit the PHOTOS array by hand.
+
+  ════════════════════════════════════════════════════════════
+-->
+<script>
+// ── PHOTOS:START — auto-generated by build_gallery.py, do not edit manually ──
+const PHOTOS = [
+  {
+    src:      "photos/Animals-000.avif",
+    title:    "Animals 0",
+    desc:     "",
+    category: "Animals",
+    fav:      false,
+  },
+  {
+    src:      "photos/Animals-001.avif",
+    title:    "Animals 1",
+    desc:     "",
+    category: "Animals",
+    fav:      false,
+  },
+  {
+    src:      "photos/Animals-003.avif",
+    title:    "Animals 3",
+    desc:     "",
+    category: "Animals",
+    fav:      false,
+  },
+  {
+    src:      "photos/Animals-004.avif",
+    title:    "Animals 4",
+    desc:     "",
+    category: "Animals",
+    fav:      false,
+  },
+  {
+    src:      "photos/Animals-005.avif",
+    title:    "Animals 5",
+    desc:     "",
+    category: "Animals",
+    fav:      false,
+  },
+  {
+    src:      "photos/Animals-006.avif",
+    title:    "Animals 6",
+    desc:     "",
+    category: "Animals",
+    fav:      false,
+  },
+  {
+    src:      "photos/Animals-007.avif",
+    title:    "Animals 7",
+    desc:     "",
+    category: "Animals",
+    fav:      false,
+  },
+  {
+    src:      "photos/Animals-008.avif",
+    title:    "Animals 8",
+    desc:     "",
+    category: "Animals",
+    fav:      false,
+  },
+  {
+    src:      "photos/Animals-009.avif",
+    title:    "Animals 9",
+    desc:     "",
+    category: "Animals",
+    fav:      false,
+  },
+  {
+    src:      "photos/Animals-010.avif",
+    title:    "Animals 10",
+    desc:     "",
+    category: "Animals",
+    fav:      false,
+  },
+  {
+    src:      "photos/EurIPS25-000.avif",
+    title:    "Eurips25 0",
+    desc:     "",
+    category: "Eurips25",
+    fav:      false,
+  },
+  {
+    src:      "photos/EurIPS25-001.avif",
+    title:    "Eurips25 1",
+    desc:     "",
+    category: "Eurips25",
+    fav:      false,
+  },
+  {
+    src:      "photos/EurIPS25-002.avif",
+    title:    "Eurips25 2",
+    desc:     "",
+    category: "Eurips25",
+    fav:      false,
+  },
+  {
+    src:      "photos/EurIPS25-003.avif",
+    title:    "Eurips25 3",
+    desc:     "",
+    category: "Eurips25",
+    fav:      false,
+  },
+  {
+    src:      "photos/Family-000.avif",
+    title:    "Family 0",
+    desc:     "",
+    category: "Family",
+    fav:      false,
+  },
+  {
+    src:      "photos/Family-001.avif",
+    title:    "Family 1",
+    desc:     "",
+    category: "Family",
+    fav:      false,
+  },
+  {
+    src:      "photos/Family-002.avif",
+    title:    "Family 2",
+    desc:     "",
+    category: "Family",
+    fav:      false,
+  },
+  {
+    src:      "photos/Family-003.avif",
+    title:    "Family 3",
+    desc:     "",
+    category: "Family",
+    fav:      false,
+  },
+  {
+    src:      "photos/Family-004.avif",
+    title:    "Family 4",
+    desc:     "",
+    category: "Family",
+    fav:      false,
+  },
+  {
+    src:      "photos/Friends-000.avif",
+    title:    "Friends 0",
+    desc:     "",
+    category: "Friends",
+    fav:      false,
+  },
+  {
+    src:      "photos/Friends-001.avif",
+    title:    "Friends 1",
+    desc:     "",
+    category: "Friends",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-000.avif",
+    title:    "Hiking 0",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-001.avif",
+    title:    "Hiking 1",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-002.avif",
+    title:    "Hiking 2",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-003.avif",
+    title:    "Hiking 3",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-004.avif",
+    title:    "Hiking 4",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-005.avif",
+    title:    "Hiking 5",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-006.avif",
+    title:    "Hiking 6",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-007.avif",
+    title:    "Hiking 7",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-008.avif",
+    title:    "Hiking 8",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-009.avif",
+    title:    "Hiking 9",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-010.avif",
+    title:    "Hiking 10",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-011.avif",
+    title:    "Hiking 11",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-012.avif",
+    title:    "Hiking 12",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-013.avif",
+    title:    "Hiking 13",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Hiking-014.avif",
+    title:    "Hiking 14",
+    desc:     "",
+    category: "Hiking",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-000.avif",
+    title:    "Italy 0",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-001.avif",
+    title:    "Italy 1",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-002.avif",
+    title:    "Italy 2",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-003.avif",
+    title:    "Italy 3",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-004.avif",
+    title:    "Italy 4",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-005.avif",
+    title:    "Italy 5",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-006.avif",
+    title:    "Italy 6",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-007.avif",
+    title:    "Italy 7",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-008.avif",
+    title:    "Italy 8",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-009.avif",
+    title:    "Italy 9",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-010.avif",
+    title:    "Italy 10",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-0011.avif",
+    title:    "Italy 11",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-011.avif",
+    title:    "Italy 11",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Italy-012.avif",
+    title:    "Italy 12",
+    desc:     "",
+    category: "Italy",
+    fav:      false,
+  },
+  {
+    src:      "photos/Spain-000.avif",
+    title:    "Spain 0",
+    desc:     "",
+    category: "Spain",
+    fav:      false,
+  },
+  {
+    src:      "photos/Spain-001.avif",
+    title:    "Spain 1",
+    desc:     "",
+    category: "Spain",
+    fav:      false,
+  },
+  {
+    src:      "photos/Spain-002.avif",
+    title:    "Spain 2",
+    desc:     "",
+    category: "Spain",
+    fav:      false,
+  },
+  {
+    src:      "photos/Spain-003.avif",
+    title:    "Spain 3",
+    desc:     "",
+    category: "Spain",
+    fav:      false,
+  },
+  {
+    src:      "photos/Spain-004.avif",
+    title:    "Spain 4",
+    desc:     "",
+    category: "Spain",
+    fav:      false,
+  },
+  {
+    src:      "photos/Spain-005.avif",
+    title:    "Spain 5",
+    desc:     "",
+    category: "Spain",
+    fav:      false,
+  },
+  {
+    src:      "photos/Spain-006.avif",
+    title:    "Spain 6",
+    desc:     "",
+    category: "Spain",
+    fav:      false,
+  },
+  {
+    src:      "photos/Spain-007.avif",
+    title:    "Spain 7",
+    desc:     "",
+    category: "Spain",
+    fav:      false,
+  },
+  {
+    src:      "photos/Spain-008.avif",
+    title:    "Spain 8",
+    desc:     "",
+    category: "Spain",
+    fav:      false,
+  },
+  {
+    src:      "photos/Spain-009.avif",
+    title:    "Spain 9",
+    desc:     "",
+    category: "Spain",
+    fav:      false,
+  },
+  {
+    src:      "photos/Sweden-000.avif",
+    title:    "Sweden 0",
+    desc:     "",
+    category: "Sweden",
+    fav:      false,
+  },
+  {
+    src:      "photos/Sweden-001.avif",
+    title:    "Sweden 1",
+    desc:     "",
+    category: "Sweden",
+    fav:      false,
+  },
+  {
+    src:      "photos/Sweden-002.avif",
+    title:    "Sweden 2",
+    desc:     "",
+    category: "Sweden",
+    fav:      false,
+  },
+  {
+    src:      "photos/Sweden-003.avif",
+    title:    "Sweden 3",
+    desc:     "",
+    category: "Sweden",
+    fav:      false,
+  },
+  {
+    src:      "photos/Sweden-004.avif",
+    title:    "Sweden 4",
+    desc:     "",
+    category: "Sweden",
+    fav:      false,
+  },
+  {
+    src:      "photos/Sweden-005.avif",
+    title:    "Sweden 5",
+    desc:     "",
+    category: "Sweden",
+    fav:      false,
+  },
+  {
+    src:      "photos/Sweden-006.avif",
+    title:    "Sweden 6",
+    desc:     "",
+    category: "Sweden",
+    fav:      false,
+  },
+  {
+    src:      "photos/Sweden-007.avif",
+    title:    "Sweden 7",
+    desc:     "",
+    category: "Sweden",
+    fav:      false,
+  },
+  {
+    src:      "photos/Trento-000.avif",
+    title:    "Trento 0",
+    desc:     "",
+    category: "Trento",
+    fav:      false,
+  },
+  {
+    src:      "photos/Trento-001.avif",
+    title:    "Trento 1",
+    desc:     "",
+    category: "Trento",
+    fav:      false,
+  },
+  {
+    src:      "photos/Trento-002.avif",
+    title:    "Trento 2",
+    desc:     "",
+    category: "Trento",
+    fav:      false,
+  },
+  {
+    src:      "photos/Trento-003.avif",
+    title:    "Trento 3",
+    desc:     "",
+    category: "Trento",
+    fav:      false,
+  },
+  {
+    src:      "photos/WASPconference26-000.avif",
+    title:    "Waspconference26 0",
+    desc:     "",
+    category: "Waspconference26",
+    fav:      false,
+  },
+];
+// ── PHOTOS:END ────────────────────────────────────────────────────────────────
+
+/* ── Theme toggle ─────────────────────────────────────── */
+const btn = document.getElementById('theme-toggle');
+if (localStorage.getItem('theme') === 'dark') {
+  document.body.classList.add('dark');
+  btn.textContent = '☀️';
+}
+btn.addEventListener('click', () => {
+  document.body.classList.toggle('dark');
+  const isDark = document.body.classList.contains('dark');
+  btn.textContent = isDark ? '☀️' : '🌙';
+  localStorage.setItem('theme', isDark ? 'dark' : 'light');
+});
+
+/* ── State ────────────────────────────────────────────── */
+let activeCategory = 'All';
+let lightboxIndex  = 0;
+let currentPhotos  = [];   // photos visible after current filter
+
+/* ── Build category tabs ──────────────────────────────── */
+function buildTabs() {
+  const cats = ['All', ...new Set(PHOTOS.map(p => p.category))];
+  const bar = document.getElementById('tab-bar');
+  bar.innerHTML = '';
+  cats.forEach(cat => {
+    const t = document.createElement('button');
+    t.className = 'tab' + (cat === activeCategory ? ' active' : '');
+    t.textContent = cat === 'All' ? `All (${PHOTOS.length})` : `${cat}`;
+    t.addEventListener('click', () => { activeCategory = cat; buildTabs(); renderGrid(); });
+    bar.appendChild(t);
+  });
+}
+
+/* ── Render masonry grid ──────────────────────────────── */
+function renderGrid() {
+  currentPhotos = activeCategory === 'All'
+    ? PHOTOS
+    : PHOTOS.filter(p => p.category === activeCategory);
+
+  const grid = document.getElementById('gallery-grid');
+  const empty = document.getElementById('empty-msg');
+  grid.innerHTML = '';
+
+  if (currentPhotos.length === 0) {
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  currentPhotos.forEach((p, i) => {
+    const card = document.createElement('div');
+    card.className = 'photo-card' + (p.fav ? ' fav' : '');
+    card.innerHTML = `
+      <span class="fav-badge">${p.fav ? '⭐' : '☆'}</span>
+      <img src="${p.src}" alt="${p.title}" loading="lazy" />
+      <div class="card-caption">
+        <strong>${p.title}</strong>
+        ${p.desc ? `<span>${p.desc}</span>` : ''}
+      </div>`;
+    card.addEventListener('click', () => openLightbox(i));
+    grid.appendChild(card);
+  });
+}
+
+/* ── Lightbox ─────────────────────────────────────────── */
+function openLightbox(i) {
+  lightboxIndex = i;
+  showLightboxPhoto();
+  document.getElementById('lightbox').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function showLightboxPhoto() {
+  const p = currentPhotos[lightboxIndex];
+  const img = document.getElementById('lb-img');
+  img.style.opacity = 0;
+  img.onload = () => { img.style.opacity = 1; };
+  img.src = p.src;
+  img.alt = p.title;
+  document.getElementById('lb-title').textContent = p.title;
+  document.getElementById('lb-desc').textContent  = p.desc || '';
+  document.getElementById('lb-counter').textContent =
+    `${lightboxIndex + 1} / ${currentPhotos.length}`;
+}
+
+function lbStep(dir) {
+  lightboxIndex = (lightboxIndex + dir + currentPhotos.length) % currentPhotos.length;
+  showLightboxPhoto();
+}
+
+document.getElementById('lb-close').addEventListener('click', closeLightbox);
+document.getElementById('lb-prev').addEventListener('click', () => lbStep(-1));
+document.getElementById('lb-next').addEventListener('click', () => lbStep(+1));
+document.getElementById('lightbox').addEventListener('click', e => {
+  if (e.target === document.getElementById('lightbox')) closeLightbox();
+});
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('lightbox').classList.contains('open')) return;
+  if (e.key === 'ArrowLeft')  lbStep(-1);
+  if (e.key === 'ArrowRight') lbStep(+1);
+  if (e.key === 'Escape')     closeLightbox();
+});
+
+/* ── Init ─────────────────────────────────────────────── */
+buildTabs();
+renderGrid();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GenAI in Drug Discovery</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* ── Page header ── */
+    .seminar-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 6px;
+      flex-wrap: wrap;
+    }
+    .seminar-header a.back-home {
+      font-size: 0.9rem;
+      text-decoration: none;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 4px 10px;
+      color: inherit;
+      white-space: nowrap;
+      transition: border-color 0.2s;
+    }
+    .seminar-header a.back-home:hover { border-color: #888; }
+    body.dark .seminar-header a.back-home { border-color: #444; }
+    .seminar-header h1 { margin: 0; font-size: 1.7rem; }
+    .seminar-subtitle {
+      color: #555;
+      margin: 0 0 28px;
+      font-size: 0.95rem;
+    }
+    body.dark .seminar-subtitle { color: #8b949e; }
+
+    /* ── Filter tabs ── */
+    #filter-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .ftab {
+      padding: 5px 16px;
+      border: 1px solid #ccc;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      background: none;
+      color: inherit;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .ftab:hover { border-color: #888; }
+    .ftab.active { background: #0366d6; border-color: #0366d6; color: #fff; }
+    body.dark .ftab { border-color: #444; }
+    body.dark .ftab.active { background: #58a6ff; border-color: #58a6ff; color: #0d1117; }
+
+    /* ── Talk card ── */
+    .talk-card {
+      border: 1px solid #e1e4e8;
+      border-radius: 10px;
+      padding: 20px 22px;
+      margin-bottom: 16px;
+      position: relative;
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+    body.dark .talk-card { border-color: #30363d; }
+    .talk-card:hover {
+      box-shadow: 0 4px 18px rgba(0,0,0,0.09);
+      border-color: #b0b7c0;
+    }
+    body.dark .talk-card:hover { border-color: #58a6ff44; box-shadow: 0 4px 18px rgba(0,0,0,0.4); }
+
+    /* status badge */
+    .status-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 2px 9px;
+      border-radius: 20px;
+      margin-bottom: 10px;
+    }
+    .status-upcoming  { background: #dff0d8; color: #2d6a2d; }
+    .status-past      { background: #f0f0f0; color: #666; }
+    .status-cancelled { background: #fde8e8; color: #a00; }
+    body.dark .status-upcoming  { background: #1e3a1e; color: #7ee07e; }
+    body.dark .status-past      { background: #21262d; color: #8b949e; }
+    body.dark .status-cancelled { background: #3a1e1e; color: #f78080; }
+
+    .talk-title {
+      font-size: 1.08rem;
+      font-weight: 700;
+      margin: 0 0 4px;
+      padding-right: 80px;  /* room for the date chip */
+    }
+    .talk-speaker {
+      font-size: 0.9rem;
+      color: #555;
+      margin-bottom: 8px;
+    }
+    body.dark .talk-speaker { color: #8b949e; }
+    .talk-speaker strong { color: #222; }
+    body.dark .talk-speaker strong { color: #e6edf3; }
+    .talk-desc {
+      font-size: 0.88rem;
+      color: #444;
+      margin-bottom: 12px;
+      line-height: 1.55;
+    }
+    body.dark .talk-desc { color: #c9d1d9; }
+
+    /* date chip (absolute top-right) */
+    .talk-date-chip {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      text-align: center;
+      background: #f6f8fa;
+      border: 1px solid #e1e4e8;
+      border-radius: 8px;
+      padding: 6px 12px;
+      min-width: 54px;
+    }
+    body.dark .talk-date-chip { background: #161b22; border-color: #30363d; }
+    .talk-date-chip .chip-month {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #0366d6;
+    }
+    body.dark .talk-date-chip .chip-month { color: #58a6ff; }
+    .talk-date-chip .chip-day {
+      font-size: 1.5rem;
+      font-weight: 700;
+      line-height: 1.1;
+      color: #222;
+    }
+    body.dark .talk-date-chip .chip-day { color: #e6edf3; }
+    .talk-date-chip .chip-year {
+      font-size: 0.68rem;
+      color: #888;
+    }
+
+    /* timezone row */
+    .tz-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .tz-pill {
+      font-size: 0.78rem;
+      background: #f6f8fa;
+      border: 1px solid #e1e4e8;
+      border-radius: 6px;
+      padding: 3px 10px;
+      white-space: nowrap;
+      cursor: default;
+    }
+    body.dark .tz-pill { background: #161b22; border-color: #30363d; color: #c9d1d9; }
+    .tz-pill .tz-name { font-weight: 600; margin-right: 4px; }
+    .tz-pill .tz-local { font-size: 0.72rem; color: #888; }
+
+    /* footer row: tags + link */
+    .talk-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      padding: 2px 8px;
+      border-radius: 20px;
+      border: 1px solid #d1d5db;
+      color: #555;
+      margin-right: 4px;
+    }
+    body.dark .tag { border-color: #30363d; color: #8b949e; }
+
+    .join-btn {
+      display: inline-block;
+      padding: 6px 16px;
+      background: #0366d6;
+      color: #fff;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .join-btn:hover { background: #024ea4; color: #fff; }
+    .join-btn.disabled {
+      background: #ccc;
+      color: #888;
+      pointer-events: none;
+    }
+    body.dark .join-btn { background: #58a6ff; color: #0d1117; }
+    body.dark .join-btn:hover { background: #79b8ff; color: #0d1117; }
+    body.dark .join-btn.disabled { background: #30363d; color: #555; }
+
+    /* recording link */
+    .rec-link {
+      font-size: 0.82rem;
+      color: #0366d6;
+    }
+    body.dark .rec-link { color: #58a6ff; }
+
+    /* empty state */
+    #empty-msg {
+      text-align: center;
+      padding: 48px 20px;
+      color: #888;
+      font-style: italic;
+    }
+
+    @media (max-width: 560px) {
+      .talk-date-chip { position: static; display: inline-flex; gap: 6px; align-items: baseline; border-radius: 6px; margin-bottom: 8px; }
+      .talk-date-chip .chip-day { font-size: 1rem; }
+      .talk-title { padding-right: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
+
+<div class="container">
+
+  <div class="seminar-header">
+    <a class="back-home" href="index.html">← Home</a>
+    <h1>🧬 GenAI in Drug Discovery</h1>
+  </div>
+  <p class="seminar-subtitle">
+    Sessions co-organized by <strong>Riccardo Tedoldi</strong> and <strong>Ross Irwin</strong>. Feel free to fill the form to suggest speakers, topics or register your interest to receive updates on upcoming talks <a href="https://forms.gle/6ihaWunwZqZZe2Kp6">here→</a>.
+  </p>
+
+  <div id="filter-bar">
+    <button class="ftab active" data-filter="all">All</button>
+    <button class="ftab" data-filter="upcoming">Upcoming</button>
+    <button class="ftab" data-filter="past">Past</button>
+  </div>
+
+  <div id="talks-list"></div>
+  <div id="empty-msg" style="display:none">No talks in this category yet.</div>
+
+</div>
+
+<!--
+  ════════════════════════════════════════════════════════════
+  HOW TO ADD A TALK
+  ════════════════════════════════════════════════════════════
+
+  Add an entry to the TALKS array below.
+
+  Fields:
+    title       – talk title
+    speaker     – speaker name
+    affiliation – speaker's institution / company
+    date        – ISO date string: 'YYYY-MM-DD'
+    time        – local time string for the primary timezone, e.g. '15:00'
+    timezone    – IANA timezone of the primary time, e.g. 'Europe/Stockholm'
+    extraTZ     – array of extra IANA timezones to show alongside
+    desc        – short description (1–3 sentences)
+    tags        – array of topic labels
+    link        – URL to join (Zoom, Teams, Google Meet…); '' if not yet set
+    recording   – URL to recording after the talk; '' if none
+    status      – 'upcoming' | 'past' | 'cancelled'
+
+  ════════════════════════════════════════════════════════════
+-->
+<script>
+const TALKS = [
+  // ── ADD / EDIT TALKS HERE ─────────────────────────────────
+  {
+    title:       'Rethinking Diffusion Models with Symmetries through Canonicalization with Applications to Molecular Graph Generation',
+    speaker:     'Cai Zhou & Zijie Chen',
+    affiliation: 'MIT CSAIL & Zhejiang University in Turing Class',
+    date:        '2026-03-27',
+    time:        '16:00',
+    timezone:    'Europe/Stockholm',
+    extraTZ:     ['America/New_York', 'America/Los_Angeles', 'Asia/Singapore'],
+    desc:        'https://arxiv.org/pdf/2602.15022v1',
+    tags:        ['Generative Models', 'AI4Science', 'Molecular Generation'],
+    link:        'https://zoom.us/j/example',
+    recording:   '',
+    status:      'upcoming',
+  },
+];
+
+/* ── Theme toggle ─────────────────────────────────────── */
+const themeBtn = document.getElementById('theme-toggle');
+if (localStorage.getItem('theme') === 'dark') {
+  document.body.classList.add('dark');
+  themeBtn.textContent = '☀️';
+}
+themeBtn.addEventListener('click', () => {
+  document.body.classList.toggle('dark');
+  const isDark = document.body.classList.contains('dark');
+  themeBtn.textContent = isDark ? '☀️' : '🌙';
+  localStorage.setItem('theme', isDark ? 'dark' : 'light');
+});
+
+/* ── Timezone helpers ─────────────────────────────────── */
+function formatTZ(isoDate, timeStr, fromTZ, toTZ) {
+  // Build a Date from the given date + time in fromTZ
+  const [y, mo, d] = isoDate.split('-').map(Number);
+  const [h, m]     = timeStr.split(':').map(Number);
+
+  // Use Intl to find the UTC offset of fromTZ at that moment
+  const baseDate = new Date(Date.UTC(y, mo - 1, d, h, m));
+  // Shift by the difference between fromTZ and UTC
+  const fromOffset = tzOffsetMin(baseDate, fromTZ);
+  const utcMs      = baseDate.getTime() - fromOffset * 60000;
+  const utcDate    = new Date(utcMs);
+
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone:    toTZ,
+    hour:        '2-digit',
+    minute:      '2-digit',
+    hour12:      false,
+    weekday:     'short',
+  }).format(utcDate);
+}
+
+function tzOffsetMin(date, tz) {
+  // Returns UTC offset in minutes for tz at the given Date
+  const utcStr  = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC',  hour12: false, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }).format(date);
+  const tzStr   = new Intl.DateTimeFormat('en-US', { timeZone: tz,     hour12: false, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }).format(date);
+  return (parseFormattedDate(tzStr) - parseFormattedDate(utcStr)) / 60000;
+}
+
+function parseFormattedDate(s) {
+  // 'MM/DD/YYYY, HH:MM'
+  const m = s.match(/(\d+)\/(\d+)\/(\d+),\s*(\d+):(\d+)/);
+  if (!m) return 0;
+  return Date.UTC(+m[3], +m[1]-1, +m[2], +m[4], +m[5]);
+}
+
+function shortTZLabel(tz) {
+  const labels = {
+    'Europe/Stockholm':    'CET/CEST',
+    'America/New_York':    'ET',
+    'America/Los_Angeles': 'PT',
+    'Asia/Singapore':      'SGT',
+    'Europe/London':       'GMT/BST',
+    'Asia/Tokyo':          'JST',
+    'America/Chicago':     'CT',
+  };
+  return labels[tz] || tz.split('/').pop().replace('_', ' ');
+}
+
+function formatDateChip(isoDate) {
+  const [y, mo, d] = isoDate.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  const month = dt.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+  return { month, day: String(d).padStart(2, '0'), year: y };
+}
+
+/* ── Render ───────────────────────────────────────────── */
+let activeFilter = 'all';
+
+function render() {
+  const list  = document.getElementById('talks-list');
+  const empty = document.getElementById('empty-msg');
+  list.innerHTML = '';
+
+  const sorted = [...TALKS].sort((a, b) => b.date.localeCompare(a.date));
+  const filtered = activeFilter === 'all' ? sorted : sorted.filter(t => t.status === activeFilter);
+
+  if (filtered.length === 0) {
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+
+  filtered.forEach(t => {
+    const chip  = formatDateChip(t.date);
+    const allTZ = [t.timezone, ...t.extraTZ];
+    const tzPills = allTZ.map(tz => {
+      const formatted = formatTZ(t.date, t.time, t.timezone, tz);
+      return `<span class="tz-pill"><span class="tz-name">${shortTZLabel(tz)}</span>${formatted}</span>`;
+    }).join('');
+
+    const tags = (t.tags || []).map(g => `<span class="tag">${g}</span>`).join('');
+
+    let actionHtml = '';
+    if (t.status === 'upcoming' && t.link) {
+      actionHtml = `<a class="join-btn" href="${t.link}" target="_blank" rel="noopener">🔗 Join</a>`;
+    } else if (t.status === 'upcoming' && !t.link) {
+      actionHtml = `<span class="join-btn disabled">Link coming soon</span>`;
+    } else if (t.status === 'past' && t.recording) {
+      actionHtml = `<a class="rec-link" href="${t.recording}" target="_blank" rel="noopener">▶ Watch recording</a>`;
+    }
+
+    const statusLabel = { upcoming: 'Upcoming', past: 'Past', cancelled: 'Cancelled' }[t.status] || t.status;
+    const card = document.createElement('div');
+    card.className = 'talk-card';
+    card.innerHTML = `
+      <div class="talk-date-chip">
+        <div class="chip-month">${chip.month}</div>
+        <div class="chip-day">${chip.day}</div>
+        <div class="chip-year">${chip.year}</div>
+      </div>
+      <span class="status-badge status-${t.status}">${statusLabel}</span>
+      <div class="talk-title">${t.title}</div>
+      <div class="talk-speaker"><strong>${t.speaker}</strong> · ${t.affiliation}</div>
+      <div class="talk-desc">${t.desc}</div>
+      <div class="tz-row">${tzPills}</div>
+      <div class="talk-footer">
+        <div>${tags}</div>
+        <div>${actionHtml}</div>
+      </div>`;
+    list.appendChild(card);
+  });
+}
+
+/* ── Filter tabs ──────────────────────────────────────── */
+document.querySelectorAll('.ftab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    activeFilter = tab.dataset.filter;
+    document.querySelectorAll('.ftab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    render();
+  });
+});
+
+render();
+</script>
+
+</body>
+</html>

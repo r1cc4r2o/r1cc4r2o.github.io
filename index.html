@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Riccardo Tedoldi</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
+<a id="blog-btn" href="blog.html" aria-label="Blog" title="Blog">📝</a>
+<button id="game-btn" aria-label="Play game" title="Play arcade games">🕹️</button>
+
+<!-- Game overlay -->
+<div id="game-overlay">
+  <div id="game-modal">
+    <button id="game-close">✕</button>
+
+    <div id="game-launcher">
+      <h2 id="launcher-title">🕹️ Arcade</h2>
+      <div id="game-grid">
+        <button class="game-card" data-game="chase">
+          <span class="gc-icon">🚗</span>
+          <span class="gc-name">NYC Chase</span>
+          <span class="gc-desc">Escape the cops on Manhattan streets</span>
+        </button>
+        <button class="game-card" data-game="snake">
+          <span class="gc-icon">🐍</span>
+          <span class="gc-name">Snake</span>
+          <span class="gc-desc">Classic snake — eat, grow, survive</span>
+        </button>
+        <button class="game-card" data-game="asteroids">
+          <span class="gc-icon">🚀</span>
+          <span class="gc-name">Asteroids</span>
+          <span class="gc-desc">Blast space rocks before they hit you</span>
+        </button>
+        <button class="game-card" data-game="breakout">
+          <span class="gc-icon">🧱</span>
+          <span class="gc-name">Breakout</span>
+          <span class="gc-desc">Smash all the bricks with your ball</span>
+        </button>
+        <button class="game-card" data-game="flappy">
+          <span class="gc-icon">🐦</span>
+          <span class="gc-name">Flappy Bird</span>
+          <span class="gc-desc">Tap to fly — dodge every pipe</span>
+        </button>
+        <button class="game-card" data-game="catrun">
+          <span class="gc-icon">🐱</span>
+          <span class="gc-name">Cat Run!</span>
+          <span class="gc-desc">Escape the catcher through the neighbourhood</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="game-area" class="hidden">
+      <button id="back-btn">← Back</button>
+      <canvas id="game-canvas"></canvas>
+      <div id="game-hud">
+        <span id="hud-score">Score: 0</span>
+        <span id="hud-level">Level: 1</span>
+        <span id="hud-lives">❤️❤️❤️</span>
+      </div>
+      <div id="game-msg" class="hidden">
+        <h2 id="msg-title"></h2>
+        <p id="msg-sub"></p>
+        <button id="msg-btn">Play Again</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="bio">
+    <div class="photo">
+      <img src="profile.png" alt="Riccardo Tedoldi" />
+    </div>
+    <div class="info">
+      <h1>Riccardo Tedoldi</h1>
+      <p>
+        <a href="https://github.com/r1cc4r2o">GitHub</a> |
+        <a href="https://scholar.google.com/citations?user=E_QzprYAAAAJ&hl=en">Google Scholar</a> |
+        <a href="https://www.linkedin.com/in/riccardo-tedoldi-460269291">LinkedIn</a> |
+        <a href="https://www.linkedin.com/in/riccardo-tedoldi-460269291">CV</a> |
+        <a href="gallery.html">📷 Me</a>
+      </p>
+      <p>
+        Hi! I am an industrial PhD student at AstraZeneca affiliated with KTH, 
+        supervised by <a href="https://scholar.google.com/citations?user=-vwkQ3MAAAAJ">Jon Paul Janet</a> (main industry) and
+        <a href="https://www.csc.kth.se/~azizpour">Hossein Azizpour</a> (main KTH), with co-supervision from
+        <a href="https://scholar.google.com/citations?user=YJnPv6kAAAAJ">Ola Engkvist</a>,
+        <a href="https://scholar.google.com/citations?user=0XBT4nwAAAAJ&hl">Alessandro Tibo</a>
+        and <a href="https://scholar.google.com/citations?user=KPlaFQQAAAAJ">Patrick Bryant</a>.
+      </p>
+    </div>
+  </div>
+  <p>
+    I work on generative models for structural based drug design, 
+    trying to push the boundaries of what's possible with AI. 
+    Outside my research, I am very passionate about computer vision, 
+    and a true lover of music and photography. Feel free to get in touch 
+    if you want to collaborate, or just say hi at <a href="mailto:riccardo.tedoldi@gmail.com">riccardo.tedoldi@gmail.com</a>.
+  </p>
+  <p>
+    Stay tuned on the upcoming talks me and Ross Irwin are co-organizing on GenAI for drug discovery! Check the schedule and register to attend <a href="seminars.html"> here→</a>, or feel free to fill the 
+    form to suggest speakers, topics or register your interest to receive updates on upcoming talks <a href="https://forms.gle/6ihaWunwZqZZe2Kp6">here→</a>.
+  </p>
+
+  <h3>Journal / Conference publications</h3>
+
+  <div class="paper">
+    <b>WEISS: Wasserstein efficient sampling strategy for LLMs in drug design</b><br />
+    Riccardo Tedoldi, Junyong Li, Ola Engkvist, Andrea Passerini, Annie M. Westerlund, Alessandro Tibo<br />
+    <i>Machine Learning: Science and Technology</i>, 2025<br />
+    [<a href="https://doi.org/10.1088/2632-2153/addc33">paper</a>]
+    [<a href="https://github.com/r1cc4r2o/weiss">code</a>]
+  </div>
+
+  <div class="paper">
+    <b>3D part segmentation via geometric aggregation of 2D visual features</b><br />
+    Marco Garosi, Riccardo Tedoldi, Davide Boscaini, Massimiliano Mancini, Nicu Sebe, Fabio Poiesi<br />
+    <i>IEEE/CVF Winter Conference on Applications of Computer Vision (WACV)</i>, 2025<br />
+    [<a href="https://openaccess.thecvf.com/content/WACV2025/papers/Garosi_3D_Part_Segmentation_via_Geometric_Aggregation_of_2D_Visual_Features_WACV_2025_paper.pdf">paper</a>]
+    [<a href="https://3d-cops.github.io">project page</a>]
+    [<a href="https://github.com/marco-garosi/COPS">code</a>]
+  </div>
+
+  <h3>Workshop publications</h3>
+
+  <div class="paper">
+    <b>An open source perspective on AI and alignment with the EU AI Act</b><br />
+    Diego Calanzone, Andrea Coppari, Riccardo Tedoldi, Giulia Olivato, Carlo Casonato<br />
+    <i>IJCAI @ AISafety/SafeRL Workshop</i>, 2023<br />
+    [<a href="https://ceur-ws.org/Vol-3505/paper_10.pdf">paper</a>]
+  </div>
+
+  
+
+  <h3>News 📢</h3>
+
+  <div class="news">
+    <b>March 2026:</b> Selected for a fully founded study trip in Singapore!<br />
+    <b>January 2026:</b> Presenting my poster at WASP Winter Conference 2026! Check it out <a href="https://wasp-sweden.org/wasp-winter-conference-2026-features-collaboration-and-community/">here</a>.<br />
+    <b>December 2025:</b> Presenting WEISS at EurIPS ML4Molecules workshop as Oral! Check it out <a href="https://moleculediscovery.github.io/workshop2025/">here</a>.<br />
+
+</div>
+
+<script>
+  const btn = document.getElementById('theme-toggle');
+  const saved = localStorage.getItem('theme');
+  if (saved === 'dark') {
+    document.body.classList.add('dark');
+    btn.textContent = '☀️';
+  }
+  btn.addEventListener('click', () => {
+    document.body.classList.toggle('dark');
+    const isDark = document.body.classList.contains('dark');
+    btn.textContent = isDark ? '☀️' : '🌙';
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  });
+
+  document.getElementById('game-btn').addEventListener('click', () => {
+    document.getElementById('game-overlay').classList.add('active');
+    showLauncher();
+  });
+  document.getElementById('game-close').addEventListener('click', () => {
+    document.getElementById('game-overlay').classList.remove('active');
+    stopGame();
+  });
+  document.getElementById('back-btn').addEventListener('click', () => {
+    stopGame();
+    showLauncher();
+  });
+  document.getElementById('msg-btn').addEventListener('click', () => {
+    document.getElementById('game-msg').classList.add('hidden');
+    startCurrentGame();
+  });
+  document.querySelectorAll('.game-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const g = card.dataset.game;
+      document.getElementById('game-launcher').classList.add('hidden');
+      document.getElementById('game-area').classList.remove('hidden');
+      launchGame(g);
+    });
+  });
+</script>
+<script src="game.js"></script>
+</body>
+</html>
