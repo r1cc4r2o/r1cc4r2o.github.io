@@ -484,7 +484,7 @@ function render() {
 
     const tags = (t.tags || []).map(g => `<span class="tag">${g}</span>`).join('');
 
-    const descHtml = t.desc.startsWith('http') ? `<a href="${t.desc}" target="_blank" rel="noopener">${t.desc}</a>` : t.desc;
+    const descHtml = t.desc.startsWith('http') ? `<a href="${t.desc}" target="_blank" rel="noopener" class="rec-link">${t.desc}</a>` : t.desc;
 
     let actionHtml = '';
     if (t.status === 'upcoming' && t.link) {
