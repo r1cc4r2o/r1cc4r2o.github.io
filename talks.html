@@ -206,6 +206,25 @@
     body.dark .join-btn:hover { background: #79b8ff; color: #0d1117; }
     body.dark .join-btn.disabled { background: #30363d; color: #555; }
 
+    .cal-btn {
+      display: inline-block;
+      padding: 6px 16px;
+      background: #6f42c1;
+      color: #fff;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+      border: none;
+      margin-left: 8px;
+    }
+    .cal-btn:hover { background: #563399; }
+    body.dark .cal-btn { background: #7d5eb8; }
+    body.dark .cal-btn:hover { background: #9870d8; }
+
     /* recording link */
     .rec-link {
       font-size: 0.82rem;
@@ -240,6 +259,9 @@
   </div>
   <p class="seminar-subtitle">
     Sessions co-organized by <strong>Riccardo Tedoldi</strong> and <strong>Ross Irwin</strong>. Feel free to fill the form to suggest speakers, topics or register your interest to receive updates on upcoming talks <a href="https://forms.gle/6ihaWunwZqZZe2Kp6">here→</a>.
+  </p>
+  <p>
+    Soon we will also share the recordings of past talks, so stay tuned!
   </p>
 
   <div id="filter-bar">
@@ -280,13 +302,27 @@
 const TALKS = [
   // ── ADD / EDIT TALKS HERE ─────────────────────────────────
   {
+    title:       'MacroGuide: Topological Guidance for Macrocycle Generation',
+    speaker:     'Alicja Maksymiuk',
+    affiliation: 'Oxford University',
+    date:        '2026-05-11',
+    time:        '16:00',
+    timezone:    'Europe/Stockholm',
+    extraTZ:     ['Europe/London', 'America/New_York', 'America/Los_Angeles', 'Asia/Singapore'],
+    desc:        'https://arxiv.org/abs/2602.14977',
+    tags:        ['Generative Models', 'AI4Science', '3D Molecular Generation', 'Macrocycles'],
+    link:        'https://chalmers.zoom.us/j/63512101689',
+    recording:   '',
+    status:      'upcoming',
+  },
+  {
     title:       'Rethinking Diffusion Models with Symmetries through Canonicalization with Applications to Molecular Graph Generation',
     speaker:     'Cai Zhou & Zijie Chen',
     affiliation: 'MIT CSAIL & Zhejiang University in Turing Class',
     date:        '2026-03-27',
     time:        '15:00',
     timezone:    'Europe/Stockholm',
-    extraTZ:     ['America/New_York', 'America/Los_Angeles', 'Asia/Singapore'],
+    extraTZ:     ['Europe/London', 'America/New_York', 'America/Los_Angeles', 'Asia/Singapore'],
     desc:        'https://arxiv.org/pdf/2602.15022v1',
     tags:        ['Generative Models', 'AI4Science', 'Molecular Generation'],
     link:        'https://url.de.m.mimecastprotect.com/s/45QgCw0oAxt7okDzNtVfQSJoA5f?domain=chalmers.zoom.us',
@@ -294,6 +330,63 @@ const TALKS = [
     status:      'past',
   },
 ];
+
+/* ── Calendar download ───────────────────────────────── */
+function generateICS(talk) {
+  // Format date/time in iCalendar format (UTC)
+  function toICSDate(isoDate, timeStr, fromTZ) {
+    const [y, mo, d] = isoDate.split('-').map(Number);
+    const [h, m] = timeStr.split(':').map(Number);
+    const baseDate = new Date(Date.UTC(y, mo - 1, d, h, m));
+    const fromOffset = tzOffsetMin(baseDate, fromTZ);
+    const utcMs = baseDate.getTime() - fromOffset * 60000;
+    const utcDate = new Date(utcMs);
+    
+    const pad = (n) => String(n).padStart(2, '0');
+    return pad(utcDate.getUTCFullYear()) + 
+           pad(utcDate.getUTCMonth() + 1) + 
+           pad(utcDate.getUTCDate()) + 'T' +
+           pad(utcDate.getUTCHours()) + 
+           pad(utcDate.getUTCMinutes()) + '00Z';
+  }
+
+  const dtstart = toICSDate(talk.date, talk.time, talk.timezone);
+  const dtend = toICSDate(talk.date, String(parseInt(talk.time.split(':')[0]) + 1).padStart(2, '0') + ':' + talk.time.split(':')[1], talk.timezone);
+  
+  const uid = `talk-${talk.date}-${talk.title.replace(/\s+/g, '-')}@rtedoldi.github.io`;
+  
+  const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//GenAI Drug Discovery//rtedoldi.github.io//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:${uid}
+DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').split('.')[0]}Z
+DTSTART:${dtstart}
+DTEND:${dtend}
+SUMMARY:${talk.title}
+DESCRIPTION:Speaker: ${talk.speaker} (${talk.affiliation})\\nJoin: ${talk.link || 'Link coming soon'}
+LOCATION:${talk.link || 'Online'}
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR`;
+  
+  return ics;
+}
+
+function downloadCalendar(talk) {
+  const ics = generateICS(talk);
+  const blob = new Blob([ics], { type: 'text/calendar' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${talk.date}-${talk.title.replace(/\s+/g, '-')}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 /* ── Theme toggle ─────────────────────────────────────── */
 const themeBtn = document.getElementById('theme-toggle');
@@ -391,11 +484,15 @@ function render() {
 
     const tags = (t.tags || []).map(g => `<span class="tag">${g}</span>`).join('');
 
+    const descHtml = t.desc.startsWith('http') ? `<a href="${t.desc}" target="_blank" rel="noopener">${t.desc}</a>` : t.desc;
+
     let actionHtml = '';
     if (t.status === 'upcoming' && t.link) {
-      actionHtml = `<a class="join-btn" href="${t.link}" target="_blank" rel="noopener">🔗 Join</a>`;
+      actionHtml = `<a class="join-btn" href="${t.link}" target="_blank" rel="noopener">🔗 Join</a>
+                   <button class="cal-btn" onclick="downloadCalendar(TALKS[${TALKS.indexOf(t)}])">📅 Add to Calendar</button>`;
     } else if (t.status === 'upcoming' && !t.link) {
-      actionHtml = `<span class="join-btn disabled">Link coming soon</span>`;
+      actionHtml = `<span class="join-btn disabled">Link coming soon</span>
+                   <button class="cal-btn" onclick="downloadCalendar(TALKS[${TALKS.indexOf(t)}])">📅 Add to Calendar</button>`;
     } else if (t.status === 'past' && t.recording) {
       actionHtml = `<a class="rec-link" href="${t.recording}" target="_blank" rel="noopener">▶ Watch recording</a>`;
     }
@@ -412,7 +509,7 @@ function render() {
       <span class="status-badge status-${t.status}">${statusLabel}</span>
       <div class="talk-title">${t.title}</div>
       <div class="talk-speaker"><strong>${t.speaker}</strong> · ${t.affiliation}</div>
-      <div class="talk-desc">${t.desc}</div>
+      <div class="talk-desc">${descHtml}</div>
       <div class="tz-row">${tzPills}</div>
       <div class="talk-footer">
         <div>${tags}</div>
